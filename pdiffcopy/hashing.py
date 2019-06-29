@@ -26,7 +26,7 @@ def hash_generic(filename, block_size, concurrency):
 
 def hash_serial(filename, block_size):
     """Compute checksums of a file in blocks (serial)."""
-    logger.info("Computing hash of %s without concurrency ..", filename)
+    logger.info("Computing hashes of %s without concurrency ..", filename)
     offset = 0
     with open(filename) as handle:
         while True:
@@ -41,7 +41,7 @@ def hash_serial(filename, block_size):
 
 def hash_parallel(filename, block_size, concurrency):
     """Compute checksums of a file in blocks (parallel)."""
-    logger.info("Computing hash of %s with a concurrency of %s ..", filename, concurrency)
+    logger.info("Computing hashes of %s with a concurrency of %s ..", filename, concurrency)
     filesize = os.path.getsize(filename)
     # Prepare for communication between processes.
     workers = []

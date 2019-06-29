@@ -9,12 +9,13 @@
 # Standard library modules.
 import logging
 import multiprocessing
+import os
 
 # External dependencies.
 import requests
-from humanfriendly import Timer, format, format_size
+from humanfriendly import Spinner, Timer, format, format_size
 from six.moves.urllib.parse import urlencode
-from property_manager import PropertyManager, mutable_property
+from property_manager import PropertyManager, mutable_property, set_property
 
 # Modules included in our package.
 from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY
@@ -28,22 +29,49 @@ class Client(PropertyManager):
 
     @mutable_property
     def block_size(self):
+        """The block size used by the client."""
         return BLOCK_SIZE
 
     @mutable_property
     def concurrency(self):
+        """The number of parallel processes that the client is allowed to start."""
         return DEFAULT_CONCURRENCY
+
+    @mutable_property
+    def dry_run(self):
+        """Whether the client is allowed to make changes."""
+        return False
 
     @property
     def options(self):
         return dict(block_size=self.block_size, concurrency=self.concurrency)
 
-    def synchronize(self, source, target):
+    @mutable_property
+    def source(self):
+        """The :class:`Location` from which data is read."""
+
+    @source.setter
+    def source(self, value):
+        """Automatically coerce :attr:`source` to a :class:`Location`."""
+        set_property(self, 'source', Location(expression=value))
+
+    @mutable_property
+    def target(self):
+        """The :class:`Location` to which data is written."""
+
+    @target.setter
+    def target(self, value):
+        """Automatically coerce :attr:`target` to a :class:`Location`."""
+        set_property(self, 'target', Location(expression=value))
+
+    def synchronize(self):
+        offsets = self.find_changes()
+        self.transfer_changes(offsets)
+
+    def find_changes(self):
         timer = Timer()
-        source = Location(expression=source)
-        target = Location(expression=target)
-        source_promise = Promise(get_hashes_pickleable, source, **self.options)
-        target_promise = Promise(get_hashes_pickleable, target, **self.options)
+        source_promise = Promise(get_hashes_pickleable, self.source, **self.options)
+        target_promise = Promise(get_hashes_pickleable, self.target, **self.options)
         source_hashes = dict(source_promise.join())
         target_hashes = dict(target_promise.join())
         num_hits = 0
@@ -56,13 +84,29 @@ class Client(PropertyManager):
                 num_misses += 1
                 todo.append(offset)
         logger.info("Took %s to compute similarity index of %i%%.", timer, num_hits / ((num_hits + num_misses) / 100.0))
-        if todo:
-            logger.info("Will download %i blocks totaling %s.", len(todo), format_size(self.block_size * len(todo)))
-        # TODO Transfer differences.
+        return todo
+
+    def transfer_changes(self, offsets):
+        timer = Timer()
+        if not offsets:
+            logger.info("Nothing to do! (no changes to synchronize)")
+        logger.info("Will download %i blocks totaling %s.", len(offsets), format_size(self.block_size * len(offsets)))
+        if self.dry_run:
+            return
+        pool = multiprocessing.Pool(self.concurrency)
+        pool.map(transfer_block, [(self.source, self.target, offset, self.block_size) for offset in offsets])
+        # TODO Truncate target to size of source.
+        logger.info("Downloaded %i blocks in %s.", len(offsets), timer)
 
 
 def get_hashes_pickleable(location, **options):
     return dict(location.get_hashes(**options))
+
+
+def transfer_block(args):
+    source, target, offset, block_size = args
+    data = source.block_read(offset, block_size)
+    target.block_write(offset, data)
 
 
 class Location(PropertyManager):
@@ -108,6 +152,29 @@ class Location(PropertyManager):
     def port_number(self):
         """The port number of a pdiffcopy server (a number or :data:`None`)."""
 
+    def block_read(self, offset, block_size):
+        logger.info("Reading %s block %s ..", self.filename, offset)
+        if self.hostname:
+            request_url = self.get_url("blocks", filename=self.filename, offset=offset, block_size=block_size)
+            logger.info("Requesting %s ..", request_url)
+            response = requests.get(request_url)
+            response.raise_for_status()
+            return response.content
+        else:
+            with open(self.filename) as handle:
+                handle.seek(offset)
+                return handle.read(block_size)
+
+    def block_write(self, offset, data):
+        if self.hostname:
+            raise Exception("Not implemented!")
+        else:
+            logger.info("Writing %s block %s (size: %s) ..", self.filename, offset, len(data))
+            with open(self.filename, 'r+b') as handle:
+                handle.seek(offset)
+                handle.write(data)
+                handle.flush()
+
     def get_hashes(self, **options):
         """Get the hashes of the blocks in a file."""
         options.update(filename=self.filename)
@@ -120,8 +187,10 @@ class Location(PropertyManager):
                 tokens = line.split()
                 yield int(tokens[0]), tokens[1]
         else:
-            for offset, digest in hash_generic(**options):
-                yield offset, digest
+            with Spinner(label="Computing local hashes", total=os.path.getsize(options['filename'])) as spinner:
+                for offset, digest in hash_generic(**options):
+                    yield offset, digest
+                    spinner.step(progress=offset)
 
     def get_url(self, endpoint, **params):
         return format(

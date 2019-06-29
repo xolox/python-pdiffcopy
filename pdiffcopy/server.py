@@ -10,7 +10,7 @@
 import logging
 
 # External dependencies.
-from flask import Flask, make_response, request, Response
+from flask import Flask, Response, request
 from gunicorn.app.base import BaseApplication
 from six import iteritems
 
@@ -38,10 +38,11 @@ def get_block():
     filename = request.args.get("filename")
     offset = int(request.args.get("offset"))
     block_size = int(request.args.get("block_size", BLOCK_SIZE))
-    with open(filename) as handle:
+    logger.info("Reading %s block %s ..", filename, offset)
+    with open(filename, "rb") as handle:
         handle.seek(offset)
         data = handle.read(block_size)
-        return make_response(status=200, response=data, mimetype="application/octet-stream")
+        return Response(status=200, response=data, mimetype="application/octet-stream")
 
 
 @app.route("/hashes")

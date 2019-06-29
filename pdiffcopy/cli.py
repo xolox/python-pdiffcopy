@@ -25,6 +25,11 @@ If no positional arguments are given the server is started.
 
     Listen on the specified IP:PORT or PORT.
 
+  -n, --dry-run
+
+    Scan for differences between the local and remote file and report the
+    similarity index, but don't write any changed blocks to the target.
+
   -v, --verbose
 
     Increase logging verbosity.
@@ -64,7 +69,9 @@ def main():
     # Parse the command line options.
     try:
         options, arguments = getopt.gnu_getopt(
-            sys.argv[1:], "b:c:l:vqh", ["block-size=", "concurrency=", "listen=", "verbose", "quiet", "help"]
+            sys.argv[1:],
+            "b:c:l:nvqh",
+            ["block-size=", "concurrency=", "listen=", "dry-run", "verbose", "quiet", "help"],
         )
     except Exception as e:
         warning("Error: %s", e)
@@ -72,6 +79,7 @@ def main():
     # Command line option defaults.
     block_size = BLOCK_SIZE
     concurrency = DEFAULT_CONCURRENCY
+    dry_run = False
     listen_address = ("", DEFAULT_PORT)
     # Map parsed options to variables.
     for option, value in options:
@@ -80,13 +88,15 @@ def main():
         elif option in ("-c", "--concurrency"):
             concurrency = int(value)
         elif option in ("-l", "--listen"):
-            if value.count(':') == 1:
-                hostname, _, port = value.partition(':')
+            if value.count(":") == 1:
+                hostname, _, port = value.partition(":")
                 listen_address = (hostname, int(port))
             elif value.isdigit():
-                listen_address = ('', int(port))
+                listen_address = ("", int(port))
             else:
                 listen_address = (value, DEFAULT_PORT)
+        elif option in ("-n", "--dry-run"):
+            dry_run = True
         elif option in ("-v", "--verbose"):
             coloredlogs.increase_verbosity()
         elif option in ("-q", "--quiet"):
@@ -99,6 +109,8 @@ def main():
         if len(arguments) != 2:
             warning("Error: Two positional arguments expected!")
             sys.exit(1)
-        Client(block_size=block_size, concurrency=concurrency).synchronize(*arguments)
+        Client(
+            block_size=block_size, concurrency=concurrency, dry_run=dry_run, source=arguments[0], target=arguments[1]
+        ).synchronize()
     else:
         start_server(address=listen_address, concurrency=concurrency)
