@@ -30,7 +30,7 @@ app = Flask(__name__)
 
 def start_server(address=("", DEFAULT_PORT), concurrency=4):
     """Start a multi threaded HTTP server."""
-    StandaloneApplication(app, {"bind": "%s:%s" % address, "workers": concurrency}).run()
+    StandaloneApplication(app, {"bind": "%s:%s" % address, "timeout": 0, "workers": concurrency}).run()
 
 
 @app.route("/blocks")
