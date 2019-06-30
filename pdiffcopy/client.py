@@ -1,7 +1,7 @@
 # Fast synchronization of large files inspired by rsync.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: June 29, 2019
+# Last Change: June 30, 2019
 # URL: https://pdiffcopy.readthedocs.io
 
 """Parallel, differential file copy client."""
@@ -90,13 +90,17 @@ class Client(PropertyManager):
         timer = Timer()
         if not offsets:
             logger.info("Nothing to do! (no changes to synchronize)")
-        logger.info("Will download %i blocks totaling %s.", len(offsets), format_size(self.block_size * len(offsets)))
+        formatted_size = format_size(self.block_size * len(offsets))
+        logger.info("Will download %i blocks totaling %s.", len(offsets), formatted_size)
         if self.dry_run:
             return
+        num_blocks = len(offsets)
         pool = multiprocessing.Pool(self.concurrency)
-        pool.map(transfer_block, [(self.source, self.target, offset, self.block_size) for offset in offsets])
+        tasks = [(self.source, self.target, offset, self.block_size) for offset in offsets]
+        for i, result in enumerate(pool.imap_unordered(transfer_block, tasks), start=1):
+            logger.info("Transferred %i/%i changed blocks (%i%%) ..", i, num_blocks, i / (num_blocks / 100.0))
         # TODO Truncate target to size of source.
-        logger.info("Downloaded %i blocks in %s.", len(offsets), timer)
+        logger.info("Downloaded %i blocks (%s) in %s.", len(offsets), formatted_size, timer)
 
 
 def get_hashes_pickleable(location, **options):
