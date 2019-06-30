@@ -107,8 +107,9 @@ class Client(PropertyManager):
         num_blocks = len(offsets)
         pool = multiprocessing.Pool(self.concurrency)
         tasks = [(self.source, self.target, offset, self.block_size) for offset in offsets]
-        for i, result in enumerate(pool.imap_unordered(transfer_block, tasks), start=1):
-            logger.info("Transferred %i/%i changed blocks (%i%%) ..", i, num_blocks, i / (num_blocks / 100.0))
+        with Spinner(label="Downloading changed blocks", total=num_blocks) as spinner:
+            for i, result in enumerate(pool.imap_unordered(transfer_block, tasks), start=1):
+                spinner.step(progress=i)
         logger.info("Downloaded %i blocks (%s) in %s.", len(offsets), formatted_size, timer)
 
 
