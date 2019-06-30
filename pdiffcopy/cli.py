@@ -18,21 +18,30 @@ If no positional arguments are given the server is started.
 
   -b, --block-size=BYTES
 
-    Customize the size of the blocks that are hashed. Can be a
+    Customize the block size of the delta transfer. Can be a
     plain number (bytes) or an expression like 5KB, 1MB, etc.
 
   -m, --hash-method=NAME
 
-    Customize the hash method (defaults to 'sha1').
+    Customize the hash method of the delta transfer (defaults to 'sha1').
 
-  -l, --listen=ADDRESS
+  -W, --whole-file
 
-    Listen on the specified IP:PORT or PORT.
+    Disable the delta transfer algorithm (skips computing
+    of hashing and downloads all blocks unconditionally).
+
+  -c, --concurrency=COUNT
+
+    Change the number of parallel block hash / copy operations.
 
   -n, --dry-run
 
     Scan for differences between the local and remote file and report the
     similarity index, but don't write any changed blocks to the target.
+
+  -l, --listen=ADDRESS
+
+    Listen on the specified IP:PORT or PORT.
 
   -v, --verbose
 
@@ -74,8 +83,18 @@ def main():
     try:
         options, arguments = getopt.gnu_getopt(
             sys.argv[1:],
-            "b:m:c:l:nvqh",
-            ["block-size=", "hash-method=", "concurrency=", "listen=", "dry-run", "verbose", "quiet", "help"],
+            "b:m:Wc:l:nvqh",
+            [
+                "block-size=",
+                "hash-method=",
+                "whole-file",
+                "concurrency=",
+                "listen=",
+                "dry-run",
+                "verbose",
+                "quiet",
+                "help",
+            ],
         )
     except Exception as e:
         warning("Error: %s", e)
@@ -83,8 +102,9 @@ def main():
     # Command line option defaults.
     block_size = BLOCK_SIZE
     concurrency = DEFAULT_CONCURRENCY
-    hash_method = "sha1"
+    delta_transfer = True
     dry_run = False
+    hash_method = "sha1"
     listen_address = ("", DEFAULT_PORT)
     # Map parsed options to variables.
     for option, value in options:
@@ -92,6 +112,8 @@ def main():
             block_size = parse_size(value)
         elif option in ("-m", "--hash-method"):
             hash_method = value
+        elif option in ("-W", "--whole-file"):
+            delta_transfer = False
         elif option in ("-c", "--concurrency"):
             concurrency = int(value)
         elif option in ("-l", "--listen"):
@@ -119,6 +141,7 @@ def main():
         Client(
             block_size=block_size,
             concurrency=concurrency,
+            delta_transfer=delta_transfer,
             dry_run=dry_run,
             hash_method=hash_method,
             source=arguments[0],

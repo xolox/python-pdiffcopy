@@ -38,13 +38,18 @@ class Client(PropertyManager):
         return DEFAULT_CONCURRENCY
 
     @mutable_property
+    def delta_transfer(self):
+        """Whether delta transfer is enabled (a boolean, defaults to :data:`True`)."""
+        return True
+
+    @mutable_property
     def dry_run(self):
         """Whether the client is allowed to make changes."""
         return False
 
     @mutable_property
     def hash_method(self):
-        """The block hash method (defaults to 'sha1')."""
+        """The block hash method (a string, defaults to 'sha1')."""
         return "sha1"
 
     @property
@@ -70,7 +75,14 @@ class Client(PropertyManager):
         set_property(self, "target", Location(expression=value))
 
     def synchronize(self):
-        offsets = self.find_changes()
+        if self.delta_transfer and not self.target.exists:
+            logger.info("Disabling delta transfer because target file doesn't exist ..")
+            self.delta_transfer = False
+        if self.delta_transfer:
+            offsets = self.find_changes()
+        else:
+            logger.info("Performing whole file copy (skipping delta transfer) ..")
+            offsets = range(0, self.source.file_size, self.block_size)
         self.transfer_changes(offsets)
 
     def find_changes(self):
@@ -101,7 +113,7 @@ class Client(PropertyManager):
         if self.dry_run:
             return
         # Make sure the target file has the right size.
-        if self.target.file_size != self.source.file_size:
+        if not (self.target.exists and self.target.file_size == self.source.file_size):
             self.target.adjust_size(self.source.file_size)
         # Download changed blocks in parallel.
         num_blocks = len(offsets)
@@ -126,6 +138,13 @@ def transfer_block(args):
 class Location(PropertyManager):
 
     """A local or remote file to be copied."""
+
+    @property
+    def exists(self):
+        if self.hostname:
+            raise Exception("Not implemented!")
+        else:
+            return os.path.isfile(self.filename)
 
     @mutable_property
     def expression(self):
@@ -181,9 +200,13 @@ class Location(PropertyManager):
     def adjust_size(self, file_size):
         if self.hostname:
             raise Exception("Not implemented!")
-        else:
-            logger.info("Adjusting size of %s to %s (%s) ..", self.filename, format_size(file_size), file_size)
+        elif self.exists:
+            logger.info("Resizing %s to %s (%s) ..", self.filename, format_size(file_size), file_size)
             with open(self.filename, "r+b") as handle:
+                handle.truncate(file_size)
+        else:
+            logger.info("Creating %s with size %s (%s) ..", self.filename, format_size(file_size), file_size)
+            with open(self.filename, "wb") as handle:
                 handle.truncate(file_size)
 
     def block_read(self, offset, block_size):
