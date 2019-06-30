@@ -95,6 +95,7 @@ class Client(PropertyManager):
         timer = Timer()
         if not offsets:
             logger.info("Nothing to do! (no changes to synchronize)")
+            return
         formatted_size = format_size(self.block_size * len(offsets))
         logger.info("Will download %i blocks totaling %s.", len(offsets), formatted_size)
         if self.dry_run:
