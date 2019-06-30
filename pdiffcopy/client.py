@@ -15,7 +15,7 @@ import os
 import requests
 from humanfriendly import Spinner, Timer, format, format_size
 from six.moves.urllib.parse import urlencode
-from property_manager import PropertyManager, mutable_property, set_property
+from property_manager import PropertyManager, cached_property, mutable_property, set_property
 
 # Modules included in our package.
 from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY
@@ -53,7 +53,7 @@ class Client(PropertyManager):
     @source.setter
     def source(self, value):
         """Automatically coerce :attr:`source` to a :class:`Location`."""
-        set_property(self, 'source', Location(expression=value))
+        set_property(self, "source", Location(expression=value))
 
     @mutable_property
     def target(self):
@@ -62,7 +62,7 @@ class Client(PropertyManager):
     @target.setter
     def target(self, value):
         """Automatically coerce :attr:`target` to a :class:`Location`."""
-        set_property(self, 'target', Location(expression=value))
+        set_property(self, "target", Location(expression=value))
 
     def synchronize(self):
         offsets = self.find_changes()
@@ -94,12 +94,15 @@ class Client(PropertyManager):
         logger.info("Will download %i blocks totaling %s.", len(offsets), formatted_size)
         if self.dry_run:
             return
+        # Make sure the target file has the right size.
+        if self.target.file_size != self.source.file_size:
+            self.target.adjust_size(self.source.file_size)
+        # Download changed blocks in parallel.
         num_blocks = len(offsets)
         pool = multiprocessing.Pool(self.concurrency)
         tasks = [(self.source, self.target, offset, self.block_size) for offset in offsets]
         for i, result in enumerate(pool.imap_unordered(transfer_block, tasks), start=1):
             logger.info("Transferred %i/%i changed blocks (%i%%) ..", i, num_blocks, i / (num_blocks / 100.0))
-        # TODO Truncate target to size of source.
         logger.info("Downloaded %i blocks (%s) in %s.", len(offsets), formatted_size, timer)
 
 
@@ -156,11 +159,31 @@ class Location(PropertyManager):
     def port_number(self):
         """The port number of a pdiffcopy server (a number or :data:`None`)."""
 
+    @cached_property
+    def file_size(self):
+        logger.info("Getting file size of %s ..", self.filename)
+        if self.hostname:
+            request_url = self.get_url("info", filename=self.filename)
+            logger.debug("Requesting %s ..", request_url)
+            response = requests.get(request_url)
+            response.raise_for_status()
+            return int(response.content)
+        else:
+            return os.path.getsize(self.filename)
+
+    def adjust_size(self, file_size):
+        if self.hostname:
+            raise Exception("Not implemented!")
+        else:
+            logger.info("Adjusting size of %s to %s (%s) ..", self.filename, format_size(file_size), file_size)
+            with open(self.filename, "r+b") as handle:
+                handle.truncate(file_size)
+
     def block_read(self, offset, block_size):
-        logger.info("Reading %s block %s ..", self.filename, offset)
+        logger.debug("Reading %s block %s ..", self.filename, offset)
         if self.hostname:
             request_url = self.get_url("blocks", filename=self.filename, offset=offset, block_size=block_size)
-            logger.info("Requesting %s ..", request_url)
+            logger.debug("Requesting %s ..", request_url)
             response = requests.get(request_url)
             response.raise_for_status()
             return response.content
@@ -173,8 +196,8 @@ class Location(PropertyManager):
         if self.hostname:
             raise Exception("Not implemented!")
         else:
-            logger.info("Writing %s block %s (size: %s) ..", self.filename, offset, len(data))
-            with open(self.filename, 'r+b') as handle:
+            logger.debug("Writing %s block %s (size: %s) ..", self.filename, offset, len(data))
+            with open(self.filename, "r+b") as handle:
                 handle.seek(offset)
                 handle.write(data)
                 handle.flush()
@@ -183,15 +206,16 @@ class Location(PropertyManager):
         """Get the hashes of the blocks in a file."""
         options.update(filename=self.filename)
         if self.hostname:
+            logger.info("Requesting hashes from server at %s:%s ..", self.hostname, self.port_number)
             request_url = self.get_url("hashes", **options)
-            logger.info("Requesting %s ..", request_url)
+            logger.debug("Requesting %s ..", request_url)
             response = requests.get(request_url)
             response.raise_for_status()
             for line in response.iter_lines():
                 tokens = line.split()
                 yield int(tokens[0]), tokens[1]
         else:
-            with Spinner(label="Computing local hashes", total=os.path.getsize(options['filename'])) as spinner:
+            with Spinner(label="Computing local hashes", total=os.path.getsize(options["filename"])) as spinner:
                 for offset, digest in hash_generic(**options):
                     yield offset, digest
                     spinner.step(progress=offset)

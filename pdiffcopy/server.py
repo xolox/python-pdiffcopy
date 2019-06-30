@@ -1,13 +1,14 @@
 # Fast synchronization of large files inspired by rsync.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: June 29, 2019
+# Last Change: June 30, 2019
 # URL: https://pdiffcopy.readthedocs.io
 
 """Parallel, differential file copy server."""
 
 # Standard library modules.
 import logging
+import os
 
 # External dependencies.
 from flask import Flask, Response, request
@@ -55,6 +56,13 @@ def get_hashes():
         ),
         mimetype="text/plain",
     )
+
+
+@app.route("/info")
+def get_info():
+    filename = request.args.get("filename")
+    response = str(os.path.getsize(filename))
+    return Response(status=200, response=response, mimetype="text/plain")
 
 
 def generate_hashes(**options):
