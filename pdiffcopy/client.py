@@ -195,7 +195,7 @@ class Location(PropertyManager):
             response.raise_for_status()
             return response.content
         else:
-            with open(self.filename) as handle:
+            with open(self.filename, "rb") as handle:
                 handle.seek(offset)
                 return handle.read(block_size)
 
