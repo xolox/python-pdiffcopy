@@ -39,7 +39,7 @@ def get_block():
     filename = request.args.get("filename")
     offset = int(request.args.get("offset"))
     block_size = int(request.args.get("block_size", BLOCK_SIZE))
-    logger.info("Reading %s block %s ..", filename, offset)
+    logger.debug("Reading %s block %s ..", filename, offset)
     with open(filename, "rb") as handle:
         handle.seek(offset)
         data = handle.read(block_size)
@@ -50,9 +50,10 @@ def get_block():
 def get_hashes():
     return Response(
         generate_hashes(
-            filename=request.args.get("filename"),
             block_size=int(request.args.get("block_size", BLOCK_SIZE)),
             concurrency=int(request.args.get("concurrency", DEFAULT_CONCURRENCY)),
+            filename=request.args.get("filename"),
+            method=request.args.get("method"),
         ),
         mimetype="text/plain",
     )

@@ -1,7 +1,7 @@
 # Command line interface for pdiffcopy.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: June 29, 2019
+# Last Change: June 30, 2019
 # URL: https://pdiffcopy.readthedocs.io
 
 """
@@ -20,6 +20,10 @@ If no positional arguments are given the server is started.
 
     Customize the size of the blocks that are hashed. Can be a
     plain number (bytes) or an expression like 5KB, 1MB, etc.
+
+  -m, --hash-method=NAME
+
+    Customize the hash method (defaults to 'sha1').
 
   -l, --listen=ADDRESS
 
@@ -70,8 +74,8 @@ def main():
     try:
         options, arguments = getopt.gnu_getopt(
             sys.argv[1:],
-            "b:c:l:nvqh",
-            ["block-size=", "concurrency=", "listen=", "dry-run", "verbose", "quiet", "help"],
+            "b:m:c:l:nvqh",
+            ["block-size=", "hash-method=", "concurrency=", "listen=", "dry-run", "verbose", "quiet", "help"],
         )
     except Exception as e:
         warning("Error: %s", e)
@@ -79,12 +83,15 @@ def main():
     # Command line option defaults.
     block_size = BLOCK_SIZE
     concurrency = DEFAULT_CONCURRENCY
+    hash_method = "sha1"
     dry_run = False
     listen_address = ("", DEFAULT_PORT)
     # Map parsed options to variables.
     for option, value in options:
         if option in ("-b", "--block-size"):
             block_size = parse_size(value)
+        elif option in ("-m", "--hash-method"):
+            hash_method = value
         elif option in ("-c", "--concurrency"):
             concurrency = int(value)
         elif option in ("-l", "--listen"):
@@ -110,7 +117,12 @@ def main():
             warning("Error: Two positional arguments expected!")
             sys.exit(1)
         Client(
-            block_size=block_size, concurrency=concurrency, dry_run=dry_run, source=arguments[0], target=arguments[1]
+            block_size=block_size,
+            concurrency=concurrency,
+            dry_run=dry_run,
+            hash_method=hash_method,
+            source=arguments[0],
+            target=arguments[1],
         ).synchronize()
     else:
         start_server(address=listen_address, concurrency=concurrency)

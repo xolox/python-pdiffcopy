@@ -42,9 +42,14 @@ class Client(PropertyManager):
         """Whether the client is allowed to make changes."""
         return False
 
+    @mutable_property
+    def hash_method(self):
+        """The block hash method (defaults to 'sha1')."""
+        return "sha1"
+
     @property
-    def options(self):
-        return dict(block_size=self.block_size, concurrency=self.concurrency)
+    def hash_options(self):
+        return dict(block_size=self.block_size, concurrency=self.concurrency, method=self.hash_method)
 
     @mutable_property
     def source(self):
@@ -70,8 +75,8 @@ class Client(PropertyManager):
 
     def find_changes(self):
         timer = Timer()
-        source_promise = Promise(get_hashes_pickleable, self.source, **self.options)
-        target_promise = Promise(get_hashes_pickleable, self.target, **self.options)
+        source_promise = Promise(get_hashes_pickleable, self.source, **self.hash_options)
+        target_promise = Promise(get_hashes_pickleable, self.target, **self.hash_options)
         source_hashes = dict(source_promise.join())
         target_hashes = dict(target_promise.join())
         num_hits = 0

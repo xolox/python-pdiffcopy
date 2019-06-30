@@ -1,7 +1,7 @@
 # Fast synchronization of large files inspired by rsync.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: June 29, 2019
+# Last Change: June 30, 2019
 # URL: https://pdiffcopy.readthedocs.io
 
 """HTTP API for the ``pdiffcopy`` program."""
@@ -17,14 +17,14 @@ import os
 logger = logging.getLogger(__name__)
 
 
-def hash_generic(filename, block_size, concurrency):
+def hash_generic(filename, block_size, concurrency, method):
     if concurrency == 1:
-        return hash_serial(filename, block_size)
+        return hash_serial(filename, block_size, method)
     else:
-        return hash_parallel(filename, block_size, concurrency)
+        return hash_parallel(filename, block_size, method, concurrency)
 
 
-def hash_serial(filename, block_size):
+def hash_serial(filename, block_size, method):
     """Compute checksums of a file in blocks (serial)."""
     logger.info("Computing hashes of %s without concurrency ..", filename)
     offset = 0
@@ -33,13 +33,13 @@ def hash_serial(filename, block_size):
             data = handle.read(block_size)
             if not data:
                 break
-            context = hashlib.sha1()
+            context = hashlib.new(method)
             context.update(data)
             yield offset, context.hexdigest()
             offset += block_size
 
 
-def hash_parallel(filename, block_size, concurrency):
+def hash_parallel(filename, block_size, method, concurrency):
     """Compute checksums of a file in blocks (parallel)."""
     logger.info("Computing hashes of %s with a concurrency of %s ..", filename, concurrency)
     filesize = os.path.getsize(filename)
@@ -49,7 +49,9 @@ def hash_parallel(filename, block_size, concurrency):
     output_queue = multiprocessing.Queue(10)
     # Create a worker process to put tasks on the input queue.
     workers.append(
-        multiprocessing.Process(target=enqueue_tasks, args=(input_queue, filename, filesize, block_size, concurrency))
+        multiprocessing.Process(
+            target=enqueue_tasks, args=(input_queue, filename, filesize, block_size, method, concurrency)
+        )
     )
     # Create worker processes to hash the file in blocks.
     while len(workers) < concurrency:
@@ -67,14 +69,14 @@ def hash_parallel(filename, block_size, concurrency):
         worker.join()
 
 
-def enqueue_tasks(input_queue, filename, file_size, block_size, concurrency):
+def enqueue_tasks(input_queue, filename, file_size, block_size, method, concurrency):
     """Push tasks onto the input queue."""
     for offset in xrange(0, file_size, block_size):
         logger.debug("Input queue producer pushing job ..")
-        input_queue.put((filename, offset))
+        input_queue.put((filename, offset, method))
     logger.debug("Input queue producer done!")
     for _ in range(concurrency):
-        input_queue.put((None, None))
+        input_queue.put((None, None, None))
     input_queue.close()
 
 
@@ -104,7 +106,7 @@ class Worker(multiprocessing.Process):
         """Compute the hashes of requested blocks."""
         while True:
             logger.debug("Hash worker waiting for job ..")
-            filename, offset = self.input_queue.get()
+            filename, offset, method = self.input_queue.get()
             if filename:
                 logger.debug("Hash worker accepted job (offset=%i) ..", offset)
             else:
@@ -112,7 +114,7 @@ class Worker(multiprocessing.Process):
                 break
             handle = self.get_handle(filename)
             handle.seek(offset)
-            context = hashlib.sha1()
+            context = hashlib.new(method)
             context.update(handle.read(self.block_size))
             logger.debug("Hash worker pushing output ..")
             self.output_queue.put((filename, offset, context.hexdigest()))
