@@ -75,6 +75,7 @@ class Client(PropertyManager):
         set_property(self, "target", Location(expression=value))
 
     def synchronize(self):
+        timer = Timer()
         if self.delta_transfer and not self.target.exists:
             logger.info("Disabling delta transfer because target file doesn't exist ..")
             self.delta_transfer = False
@@ -84,6 +85,7 @@ class Client(PropertyManager):
             logger.info("Performing whole file copy (skipping delta transfer) ..")
             offsets = range(0, self.source.file_size, self.block_size)
         self.transfer_changes(offsets)
+        logger.info("Synchronized changes in %s ..", timer)
 
     def find_changes(self):
         timer = Timer()
