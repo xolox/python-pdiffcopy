@@ -1,7 +1,7 @@
 # Fast synchronization of large files inspired by rsync.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: June 30, 2019
+# Last Change: February 29, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
 """Parallel, differential file copy client."""
@@ -21,11 +21,16 @@ from property_manager import PropertyManager, cached_property, mutable_property,
 from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY
 from pdiffcopy.hashing import hash_generic
 
+# Public identifiers that require documentation.
+__all__ = ("Client", "get_hashes_fn", "Location", "logger", "Promise", "transfer_block_fn")
+
 # Initialize a logger for this module.
 logger = logging.getLogger(__name__)
 
 
 class Client(PropertyManager):
+
+    """Python API for the client side of the ``pdiffcopy`` program."""
 
     @mutable_property
     def block_size(self):
@@ -52,10 +57,6 @@ class Client(PropertyManager):
         """The block hash method (a string, defaults to 'sha1')."""
         return "sha1"
 
-    @property
-    def hash_options(self):
-        return dict(block_size=self.block_size, concurrency=self.concurrency, method=self.hash_method)
-
     @mutable_property
     def source(self):
         """The :class:`Location` from which data is read."""
@@ -75,6 +76,7 @@ class Client(PropertyManager):
         set_property(self, "target", Location(expression=value))
 
     def synchronize(self):
+        """Synchronize from :attr:`source` to :attr:`target`."""
         timer = Timer()
         if self.delta_transfer and not self.target.exists:
             logger.info("Disabling delta transfer because target file doesn't exist ..")
@@ -88,9 +90,11 @@ class Client(PropertyManager):
         logger.info("Synchronized changes in %s ..", timer)
 
     def find_changes(self):
+        """Helper for :func:`synchronize()` to compute the similarity index."""
         timer = Timer()
-        source_promise = Promise(get_hashes_pickleable, self.source, **self.hash_options)
-        target_promise = Promise(get_hashes_pickleable, self.target, **self.hash_options)
+        hash_opts = dict(block_size=self.block_size, concurrency=self.concurrency, method=self.hash_method)
+        source_promise = Promise(get_hashes_fn, self.source, **hash_opts)
+        target_promise = Promise(get_hashes_fn, self.target, **hash_opts)
         source_hashes = dict(source_promise.join())
         target_hashes = dict(target_promise.join())
         num_hits = 0
@@ -106,6 +110,7 @@ class Client(PropertyManager):
         return todo
 
     def transfer_changes(self, offsets):
+        """Helper for :func:`synchronize()` to transfer the differences."""
         timer = Timer()
         if not offsets:
             logger.info("Nothing to do! (no changes to synchronize)")
@@ -122,19 +127,21 @@ class Client(PropertyManager):
         pool = multiprocessing.Pool(self.concurrency)
         tasks = [(self.source, self.target, offset, self.block_size) for offset in offsets]
         with Spinner(label="Downloading changed blocks", total=num_blocks) as spinner:
-            for i, result in enumerate(pool.imap_unordered(transfer_block, tasks), start=1):
+            for i, result in enumerate(pool.imap_unordered(transfer_block_fn, tasks), start=1):
                 spinner.step(progress=i)
         logger.info("Downloaded %i blocks (%s) in %s.", len(offsets), formatted_size, timer)
 
 
-def get_hashes_pickleable(location, **options):
+def get_hashes_fn(location, **options):
+    """Adapter for :mod:`multiprocessing` used by :func:`Client.find_changes()`."""
     return dict(location.get_hashes(**options))
 
 
-def transfer_block(args):
+def transfer_block_fn(args):
+    """Adapter for :mod:`multiprocessing` used by :func:`Client.transfer_changes()`."""
     source, target, offset, block_size = args
-    data = source.block_read(offset, block_size)
-    target.block_write(offset, data)
+    data = source.read_block(offset, block_size)
+    target.write_block(offset, data)
 
 
 class Location(PropertyManager):
@@ -143,8 +150,9 @@ class Location(PropertyManager):
 
     @property
     def exists(self):
+        """:data:`True` if the file exists, :data:`False` otherwise."""
         if self.hostname:
-            raise Exception("Not implemented!")
+            raise NotImplementedError("Not implemented!")
         else:
             return os.path.isfile(self.filename)
 
@@ -189,6 +197,7 @@ class Location(PropertyManager):
 
     @cached_property
     def file_size(self):
+        """The size of the file in bytes (an integer)."""
         logger.info("Getting file size of %s ..", self.filename)
         if self.hostname:
             request_url = self.get_url("info", filename=self.filename)
@@ -200,8 +209,13 @@ class Location(PropertyManager):
             return os.path.getsize(self.filename)
 
     def adjust_size(self, file_size):
+        """
+        Adjust the size of :attr:`filename` to the given size.
+
+        :param file_size: The new file size (an integer).
+        """
         if self.hostname:
-            raise Exception("Not implemented!")
+            raise NotImplementedError("Not implemented!")
         elif self.exists:
             logger.info("Resizing %s to %s (%s) ..", self.filename, format_size(file_size), file_size)
             with open(self.filename, "r+b") as handle:
@@ -211,31 +225,16 @@ class Location(PropertyManager):
             with open(self.filename, "wb") as handle:
                 handle.truncate(file_size)
 
-    def block_read(self, offset, block_size):
-        logger.debug("Reading %s block %s ..", self.filename, offset)
-        if self.hostname:
-            request_url = self.get_url("blocks", filename=self.filename, offset=offset, block_size=block_size)
-            logger.debug("Requesting %s ..", request_url)
-            response = requests.get(request_url)
-            response.raise_for_status()
-            return response.content
-        else:
-            with open(self.filename, "rb") as handle:
-                handle.seek(offset)
-                return handle.read(block_size)
-
-    def block_write(self, offset, data):
-        if self.hostname:
-            raise Exception("Not implemented!")
-        else:
-            logger.debug("Writing %s block %s (size: %s) ..", self.filename, offset, len(data))
-            with open(self.filename, "r+b") as handle:
-                handle.seek(offset)
-                handle.write(data)
-                handle.flush()
-
     def get_hashes(self, **options):
-        """Get the hashes of the blocks in a file."""
+        """
+        Get the hashes of the blocks in a file.
+
+        :param options: See :attr:`get_url()`.
+        :returns: A generator of tokens with two values each:
+
+                  1. A byte offset into the file (an integer).
+                  2. The hash of the block starting at that offset (a string).
+        """
         options.update(filename=self.filename)
         if self.hostname:
             logger.info("Requesting hashes from server at %s:%s ..", self.hostname, self.port_number)
@@ -253,6 +252,12 @@ class Location(PropertyManager):
                     spinner.step(progress=offset)
 
     def get_url(self, endpoint, **params):
+        """
+        Get the server URL for the given `endpoint`.
+
+        :param endpoint: The name of a server side endpoint (a string).
+        :param params: Any query string parameters.
+        """
         return format(
             "http://{hostname}:{port}/{endpoint}?{params}",
             hostname=self.hostname,
@@ -260,6 +265,42 @@ class Location(PropertyManager):
             endpoint=endpoint,
             params=urlencode(params),
         )
+
+    def read_block(self, offset, block_size):
+        """
+        Read a block of data from :attr:`filename`.
+
+        :param offset: The byte offset where reading starts (an integer).
+        :param block_size: The number of bytes to read (an integer).
+        :returns: A byte string.
+        """
+        logger.debug("Reading %s block %s ..", self.filename, offset)
+        if self.hostname:
+            request_url = self.get_url("blocks", filename=self.filename, offset=offset, block_size=block_size)
+            logger.debug("Requesting %s ..", request_url)
+            response = requests.get(request_url)
+            response.raise_for_status()
+            return response.content
+        else:
+            with open(self.filename, "rb") as handle:
+                handle.seek(offset)
+                return handle.read(block_size)
+
+    def write_block(self, offset, data):
+        """
+        Write a block of data to :attr:`filename`.
+
+        :param offset: The byte offset where writing starts (an integer).
+        :param data: The byte string to write to the file.
+        """
+        if self.hostname:
+            raise NotImplementedError("Not implemented!")
+        else:
+            logger.debug("Writing %s block %s (size: %s) ..", self.filename, offset, len(data))
+            with open(self.filename, "r+b") as handle:
+                handle.seek(offset)
+                handle.write(data)
+                handle.flush()
 
 
 class Promise(multiprocessing.Process):

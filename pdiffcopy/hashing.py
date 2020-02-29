@@ -1,10 +1,10 @@
 # Fast synchronization of large files inspired by rsync.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: June 30, 2019
+# Last Change: February 29, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
-"""HTTP API for the ``pdiffcopy`` program."""
+"""Serial and parallel file hashing functions."""
 
 # Standard library modules.
 import hashlib
@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def hash_generic(filename, block_size, concurrency, method):
+    """Automatically pick between :func:`hash_serial()` and :func:`hash_parallel()`."""
     if concurrency == 1:
         return hash_serial(filename, block_size, method)
     else:
@@ -87,7 +88,7 @@ class Worker(multiprocessing.Process):
 
     The reason we define a custom :class:`multiprocessing.Process`
     and manage our own pool of workers (as opposed to just using
-    :class:`multiprocessing.Pool`) is mainly for performance
+    :class:`multiprocessing.pool.Pool`) is mainly for performance
     reasons (see for example the file handle cache).
     """
 

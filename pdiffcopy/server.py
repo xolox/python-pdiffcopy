@@ -1,7 +1,7 @@
 # Fast synchronization of large files inspired by rsync.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: June 30, 2019
+# Last Change: February 29, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
 """Parallel, differential file copy server."""
@@ -19,6 +19,9 @@ from six import iteritems
 from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY
 from pdiffcopy.hashing import hash_generic
 
+# Public identifiers that require documentation.
+__all__ = ("app", "DEFAULT_PORT", "generate_hashes", "get_block", "get_hashes", "get_info", "logger", "start_server")
+
 DEFAULT_PORT = 8000
 """The default port number for the HTTP server."""
 
@@ -30,12 +33,13 @@ app = Flask(__name__)
 
 
 def start_server(address=("", DEFAULT_PORT), concurrency=4):
-    """Start a multi threaded HTTP server."""
+    """Start a multi threaded Python HTTP server using :pypi:`gunicorn`."""
     StandaloneApplication(app, {"bind": "%s:%s" % address, "timeout": 0, "workers": concurrency}).run()
 
 
 @app.route("/blocks")
 def get_block():
+    """Flask view to read a block of data."""
     filename = request.args.get("filename")
     offset = int(request.args.get("offset"))
     block_size = int(request.args.get("block_size", BLOCK_SIZE))
@@ -43,11 +47,12 @@ def get_block():
     with open(filename, "rb") as handle:
         handle.seek(offset)
         data = handle.read(block_size)
-        return Response(status=200, response=data, mimetype="application/octet-stream")
+    return Response(status=200, response=data, mimetype="application/octet-stream")
 
 
 @app.route("/hashes")
 def get_hashes():
+    """Flask view to get the hashes of a file."""
     return Response(
         generate_hashes(
             block_size=int(request.args.get("block_size", BLOCK_SIZE)),
@@ -61,12 +66,20 @@ def get_hashes():
 
 @app.route("/info")
 def get_info():
+    """Flask view to query the size of a file."""
     filename = request.args.get("filename")
     response = str(os.path.getsize(filename))
     return Response(status=200, response=response, mimetype="text/plain")
 
 
 def generate_hashes(**options):
+    """
+    Helper for :func:`get_hashes()`.
+
+    :param options: See :func:`~pdiffcopy.hashing.hash_generic()`.
+    :returns: A generator of strings, one line each, with two fields per
+              line (offset and digest) delimited by a tab character.
+    """
     for offset, digest in hash_generic(**options):
         yield "%i\t%s\n" % (offset, digest)
 

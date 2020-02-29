@@ -1,7 +1,7 @@
 # Command line interface for pdiffcopy.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: June 30, 2019
+# Last Change: February 29, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
 """
@@ -15,6 +15,8 @@ file and the other argument is expected to be an expression of the form
 HOST:PORT/PATH. File data will be read from SOURCE and written to TARGET.
 
 If no positional arguments are given the server is started.
+
+Supported options:
 
   -b, --block-size=BYTES
 
