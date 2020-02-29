@@ -9,6 +9,7 @@
 
 # Standard library modules.
 import contextlib
+import filecmp
 import logging
 import os
 import shutil
@@ -18,7 +19,7 @@ import tempfile
 # External dependencies.
 from executor import execute
 from executor.tcp import EphemeralTCPServer
-from humanfriendly import format, format_size
+from humanfriendly import format
 from humanfriendly.testing import TestCase, run_cli
 
 # Modules included in our package.
@@ -34,14 +35,16 @@ class pdiffcopy_tests(TestCase):
 
     def test_client_to_server(self):
         """Test synchronization from client to server."""
-        with TestServer() as server, temporary_directory() as directory:
-            input_file = os.path.join(directory, 'input.bin')
-            output_file = os.path.join(directory, 'output.bin')
+        with TemporaryServer() as server, temporary_directory() as directory:
+            input_file = os.path.join(directory, "input.bin")
+            output_file = os.path.join(directory, "output.bin")
             generate_data_file(input_file, 10)
-            source_expr = format("localhost:%i/%s", server.port_number, input_file.lstrip("/"))
-            logger.info("Source expression: %s", source_expr)
-            returncode, output = run_cli(main, source_expr, output_file)
+            remote_file = format("localhost:%i/%s", server.port_number, input_file.lstrip("/"))
+            returncode, output = run_cli(main, remote_file, output_file)
+            # Check that the program reported success.
             assert returncode == 0
+            # Check that the input and output file have the same content.
+            assert filecmp.cmp(input_file, output_file, shallow=False)
 
     def test_main_module(self):
         """Test the ``python -m pdiffcopy`` command."""
@@ -50,8 +53,16 @@ class pdiffcopy_tests(TestCase):
 
     def test_server_to_client(self):
         """Test synchronization from server to client."""
-        with TestServer() as server:
-            pass
+        with TemporaryServer() as server, temporary_directory() as directory:
+            input_file = os.path.join(directory, "input.bin")
+            output_file = os.path.join(directory, "output.bin")
+            generate_data_file(input_file, 10)
+            remote_file = format("localhost:%i/%s", server.port_number, output_file.lstrip("/"))
+            returncode, output = run_cli(main, input_file, remote_file)
+            # Check that the program reported success.
+            assert returncode == 0
+            # Check that the input and output file have the same content.
+            assert filecmp.cmp(input_file, output_file, shallow=False)
 
     def test_usage_message(self):
         """Test the ``pdifcopy --help`` command."""
@@ -61,15 +72,14 @@ class pdiffcopy_tests(TestCase):
             assert "Usage:" in output
 
 
-class TestServer(EphemeralTCPServer):
+class TemporaryServer(EphemeralTCPServer):
 
     """Easy to use ``pdiffcopy --listen`` wrapper."""
 
     def __init__(self):
         """The command to run (a list of strings)."""
-        super(TestServer, self).__init__(
-            sys.executable, "-m", "pdiffcopy", "--listen", str(self.port_number), "--verbose", "--verbose", scheme="http"
-        )
+        command = [sys.executable, "-m", "pdiffcopy", "--listen", str(self.port_number)]
+        super(TemporaryServer, self).__init__(*command)
 
 
 @contextlib.contextmanager

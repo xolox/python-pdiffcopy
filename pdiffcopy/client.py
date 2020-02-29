@@ -20,6 +20,7 @@ from property_manager import PropertyManager, cached_property, mutable_property,
 # Modules included in our package.
 from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY
 from pdiffcopy.hashing import hash_generic
+from pdiffcopy.utils import get_file_info, read_block, resize_file, write_block
 
 # Public identifiers that require documentation.
 __all__ = ("Client", "get_hashes_fn", "Location", "logger", "Promise", "transfer_block_fn")
@@ -121,7 +122,7 @@ class Client(PropertyManager):
             return
         # Make sure the target file has the right size.
         if not (self.target.exists and self.target.file_size == self.source.file_size):
-            self.target.adjust_size(self.source.file_size)
+            self.target.resize(self.source.file_size)
         # Download changed blocks in parallel.
         num_blocks = len(offsets)
         pool = multiprocessing.Pool(self.concurrency)
@@ -151,10 +152,8 @@ class Location(PropertyManager):
     @property
     def exists(self):
         """:data:`True` if the file exists, :data:`False` otherwise."""
-        if self.hostname:
-            raise NotImplementedError("Not implemented!")
-        else:
-            return os.path.isfile(self.filename)
+        logger.info("Checking if %s exists ..", self.filename)
+        return bool(self.file_info)
 
     @mutable_property
     def expression(self):
@@ -196,34 +195,25 @@ class Location(PropertyManager):
         """The port number of a pdiffcopy server (a number or :data:`None`)."""
 
     @cached_property
-    def file_size(self):
-        """The size of the file in bytes (an integer)."""
-        logger.info("Getting file size of %s ..", self.filename)
+    def file_info(self):
+        """A dictionary with file metadata."""
         if self.hostname:
             request_url = self.get_url("info", filename=self.filename)
             logger.debug("Requesting %s ..", request_url)
             response = requests.get(request_url)
-            response.raise_for_status()
-            return int(response.content)
+            if response.status_code == 404:
+                return {}
+            else:
+                response.raise_for_status()
+                return response.json()
         else:
-            return os.path.getsize(self.filename)
+            return get_file_info(self.filename)
 
-    def adjust_size(self, file_size):
-        """
-        Adjust the size of :attr:`filename` to the given size.
-
-        :param file_size: The new file size (an integer).
-        """
-        if self.hostname:
-            raise NotImplementedError("Not implemented!")
-        elif self.exists:
-            logger.info("Resizing %s to %s (%s) ..", self.filename, format_size(file_size), file_size)
-            with open(self.filename, "r+b") as handle:
-                handle.truncate(file_size)
-        else:
-            logger.info("Creating %s with size %s (%s) ..", self.filename, format_size(file_size), file_size)
-            with open(self.filename, "wb") as handle:
-                handle.truncate(file_size)
+    @cached_property
+    def file_size(self):
+        """The size of the file in bytes (an integer)."""
+        logger.info("Getting file size of %s ..", self.filename)
+        return self.file_info.get('size')
 
     def get_hashes(self, **options):
         """
@@ -266,25 +256,35 @@ class Location(PropertyManager):
             params=urlencode(params),
         )
 
-    def read_block(self, offset, block_size):
+    def read_block(self, offset, size):
         """
         Read a block of data from :attr:`filename`.
 
         :param offset: The byte offset where reading starts (an integer).
-        :param block_size: The number of bytes to read (an integer).
+        :param size: The number of bytes to read (an integer).
         :returns: A byte string.
         """
-        logger.debug("Reading %s block %s ..", self.filename, offset)
         if self.hostname:
-            request_url = self.get_url("blocks", filename=self.filename, offset=offset, block_size=block_size)
+            request_url = self.get_url("blocks", filename=self.filename, offset=offset, size=size)
             logger.debug("Requesting %s ..", request_url)
             response = requests.get(request_url)
             response.raise_for_status()
             return response.content
         else:
-            with open(self.filename, "rb") as handle:
-                handle.seek(offset)
-                return handle.read(block_size)
+            return read_block(self.filename, offset, size)
+
+    def resize(self, size):
+        """
+        Adjust the size of :attr:`filename` to the given size.
+
+        :param size: The new file size in bytes (an integer).
+        """
+        if self.hostname:
+            request_url = self.get_url("resize", filename=self.filename, size=size)
+            logger.debug("Posting to %s ..", request_url)
+            requests.post(request_url).raise_for_status()
+        else:
+            resize_file(self.filename, size)
 
     def write_block(self, offset, data):
         """
@@ -294,13 +294,12 @@ class Location(PropertyManager):
         :param data: The byte string to write to the file.
         """
         if self.hostname:
-            raise NotImplementedError("Not implemented!")
+            request_url = self.get_url("blocks", filename=self.filename, offset=offset)
+            logger.debug("Posting to %s ..", request_url)
+            response = requests.post(request_url, data=data)
+            response.raise_for_status()
         else:
-            logger.debug("Writing %s block %s (size: %s) ..", self.filename, offset, len(data))
-            with open(self.filename, "r+b") as handle:
-                handle.seek(offset)
-                handle.write(data)
-                handle.flush()
+            write_block(self.filename, offset, data)
 
 
 class Promise(multiprocessing.Process):

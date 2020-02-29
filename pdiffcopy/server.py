@@ -8,19 +8,28 @@
 
 # Standard library modules.
 import logging
-import os
 
 # External dependencies.
-from flask import Flask, Response, request
+from flask import Flask, Response, jsonify, request
 from gunicorn.app.base import BaseApplication
 from six import iteritems
 
 # Modules included in our package.
 from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY
 from pdiffcopy.hashing import hash_generic
+from pdiffcopy.utils import get_file_info, read_block, resize_file, write_block
 
 # Public identifiers that require documentation.
-__all__ = ("app", "DEFAULT_PORT", "generate_hashes", "get_block", "get_hashes", "get_info", "logger", "start_server")
+__all__ = (
+    "app",
+    "blocks_resource",
+    "DEFAULT_PORT",
+    "generate_hashes",
+    "hashes_resource",
+    "info_resource",
+    "logger",
+    "start_server",
+)
 
 DEFAULT_PORT = 8000
 """The default port number for the HTTP server."""
@@ -37,44 +46,59 @@ def start_server(address=("", DEFAULT_PORT), concurrency=4):
     StandaloneApplication(app, {"bind": "%s:%s" % address, "timeout": 0, "workers": concurrency}).run()
 
 
-@app.route("/blocks")
-def get_block():
-    """Flask view to read a block of data."""
-    filename = request.args.get("filename")
-    offset = int(request.args.get("offset"))
-    block_size = int(request.args.get("block_size", BLOCK_SIZE))
-    logger.debug("Reading %s block %s ..", filename, offset)
-    with open(filename, "rb") as handle:
-        handle.seek(offset)
-        data = handle.read(block_size)
-    return Response(status=200, response=data, mimetype="application/octet-stream")
+@app.route("/blocks", methods=["GET", "POST"])
+def blocks_resource():
+    """Flask view to read or write a block of data."""
+    filename = request.args["filename"]
+    offset = int(request.args["offset"])
+    if request.method == "GET":
+        data = read_block(filename, offset, int(request.args["size"]))
+        return Response(status=200, response=data, mimetype="application/octet-stream")
+    elif request.method == "POST":
+        write_block(filename, offset, request.data)
+        return Response(status=200)
+    else:
+        return Response(status=405)
 
 
 @app.route("/hashes")
-def get_hashes():
+def hashes_resource():
     """Flask view to get the hashes of a file."""
     return Response(
-        generate_hashes(
+        mimetype="text/plain",
+        response=generate_hashes(
             block_size=int(request.args.get("block_size", BLOCK_SIZE)),
             concurrency=int(request.args.get("concurrency", DEFAULT_CONCURRENCY)),
             filename=request.args.get("filename"),
             method=request.args.get("method"),
         ),
-        mimetype="text/plain",
+        status=200,
     )
 
 
 @app.route("/info")
-def get_info():
-    """Flask view to query the size of a file."""
-    filename = request.args.get("filename")
-    response = str(os.path.getsize(filename))
-    return Response(status=200, response=response, mimetype="text/plain")
+def info_resource():
+    """Flask view to query the existence and size of a file on the server."""
+    fn = request.args.get("filename")
+    info = get_file_info(fn)
+    if info:
+        return jsonify(info)
+    else:
+        return Response(status=404)
+
+
+@app.route("/resize", methods=["POST"])
+def resize_action():
+    """Flask view to create or resize_action a file on the server."""
+    fn = request.args.get("filename")
+    size = int(request.args.get("size"))
+    resize_file(fn, size)
+    return Response(status=200)
 
 
 def generate_hashes(**options):
     """
-    Helper for :func:`get_hashes()`.
+    Helper for :func:`hashes_resource()`.
 
     :param options: See :func:`~pdiffcopy.hashing.hash_generic()`.
     :returns: A generator of strings, one line each, with two fields per
