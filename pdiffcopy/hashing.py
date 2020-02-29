@@ -29,7 +29,7 @@ def hash_serial(filename, block_size, method):
     """Compute checksums of a file in blocks (serial)."""
     logger.info("Computing hashes of %s without concurrency ..", filename)
     offset = 0
-    with open(filename) as handle:
+    with open(filename, "rb") as handle:
         while True:
             data = handle.read(block_size)
             if not data:
@@ -45,39 +45,43 @@ def hash_parallel(filename, block_size, method, concurrency):
     logger.info("Computing hashes of %s with a concurrency of %s ..", filename, concurrency)
     filesize = os.path.getsize(filename)
     # Prepare for communication between processes.
-    workers = []
     input_queue = multiprocessing.Queue(10)
     output_queue = multiprocessing.Queue(10)
-    # Create a worker process to put tasks on the input queue.
-    workers.append(
-        multiprocessing.Process(
-            target=enqueue_tasks, args=(input_queue, filename, filesize, block_size, method, concurrency)
+    # Create an initial worker process to populate the input queue.
+    pool = [multiprocessing.Process(target=enqueue_tasks, args=(input_queue, filesize, block_size, concurrency))]
+    # Spawn worker processes to hash the file in blocks.
+    while len(pool) < (concurrency + 1):
+        pool.append(
+            Worker(
+                block_size=block_size,
+                filename=filename,
+                input_queue=input_queue,
+                method=method,
+                output_queue=output_queue,
+            )
         )
-    )
-    # Create worker processes to hash the file in blocks.
-    while len(workers) < concurrency:
-        workers.append(Worker(block_size, input_queue, output_queue))
     # Start the worker processes.
-    for worker in workers:
+    for worker in pool:
         worker.start()
     # Yield generated hashes from the output queue.
     for _ in range(int(math.ceil(filesize / float(block_size)))):
-        filename, offset, digest = output_queue.get()
-        yield offset, digest
+        yield output_queue.get()
     # Shutdown the worker processes.
-    logger.debug("Joining hash workers ..")
-    for worker in workers:
+    logger.debug("Joining workers ..")
+    for worker in pool:
         worker.join()
 
 
-def enqueue_tasks(input_queue, filename, file_size, block_size, method, concurrency):
+def enqueue_tasks(input_queue, filesize, block_size, concurrency):
     """Push tasks onto the input queue."""
-    for offset in xrange(0, file_size, block_size):
+    for offset in xrange(0, filesize, block_size):
         logger.debug("Input queue producer pushing job ..")
-        input_queue.put((filename, offset, method))
+        input_queue.put(offset)
     logger.debug("Input queue producer done!")
+    # Push one sentinel token for each of the workers so we can
+    # guarantee the workers don't block when the work is done.
     for _ in range(concurrency):
-        input_queue.put((None, None, None))
+        input_queue.put(None)
     input_queue.close()
 
 
@@ -92,38 +96,30 @@ class Worker(multiprocessing.Process):
     reasons (see for example the file handle cache).
     """
 
-    def __init__(self, block_size, input_queue, output_queue):
+    def __init__(self, filename, block_size, method, input_queue, output_queue):
         """Initialize a :class:`Worker` object."""
         # Initialize the superclass.
         super(Worker, self).__init__()
-        # Initialize internal state.
-        self.file_handles = {}
         # Store initializer arguments.
         self.block_size = block_size
         self.input_queue = input_queue
+        self.method = method
         self.output_queue = output_queue
+        # Open a handle to the file.
+        self.handle = open(filename, "rb")
 
     def run(self):
         """Compute the hashes of requested blocks."""
         while True:
             logger.debug("Hash worker waiting for job ..")
-            filename, offset, method = self.input_queue.get()
-            if filename:
+            offset = self.input_queue.get()
+            if offset is not None:
                 logger.debug("Hash worker accepted job (offset=%i) ..", offset)
             else:
                 logger.debug("Hash worker shutting down ..")
                 break
-            handle = self.get_handle(filename)
-            handle.seek(offset)
-            context = hashlib.new(method)
-            context.update(handle.read(self.block_size))
+            self.handle.seek(offset)
+            context = hashlib.new(self.method)
+            context.update(self.handle.read(self.block_size))
             logger.debug("Hash worker pushing output ..")
-            self.output_queue.put((filename, offset, context.hexdigest()))
-
-    def get_handle(self, filename):
-        """Get a file handle, reusing previous results."""
-        handle = self.file_handles.get(filename)
-        if handle is None:
-            handle = open(filename)
-            self.file_handles[filename] = handle
-        return handle
+            self.output_queue.put((offset, context.hexdigest()))
