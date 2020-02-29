@@ -123,7 +123,7 @@ def main():
                 hostname, _, port = value.partition(":")
                 listen_address = (hostname, int(port))
             elif value.isdigit():
-                listen_address = ("", int(port))
+                listen_address = ("", int(value))
             else:
                 listen_address = (value, DEFAULT_PORT)
         elif option in ("-n", "--dry-run"):
