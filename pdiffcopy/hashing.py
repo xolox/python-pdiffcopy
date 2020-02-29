@@ -13,6 +13,9 @@ import math
 import multiprocessing
 import os
 
+# External dependencies.
+from six.moves import range
+
 # Initialize a logger for this module.
 logger = logging.getLogger(__name__)
 
@@ -74,7 +77,7 @@ def hash_parallel(filename, block_size, method, concurrency):
 
 def enqueue_tasks(input_queue, filesize, block_size, concurrency):
     """Push tasks onto the input queue."""
-    for offset in xrange(0, filesize, block_size):
+    for offset in range(0, filesize, block_size):
         logger.debug("Input queue producer pushing job ..")
         input_queue.put(offset)
     logger.debug("Input queue producer done!")
