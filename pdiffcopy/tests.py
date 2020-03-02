@@ -23,6 +23,7 @@ from property_manager import PropertyManager, lazy_property, required_property
 
 # Modules included in our package.
 from pdiffcopy.cli import main
+from pdiffcopy.client import Location
 
 # Initialize a logger for this module.
 logger = logging.getLogger(__name__)
@@ -31,6 +32,13 @@ logger = logging.getLogger(__name__)
 class TestSuite(TestCase):
 
     """:mod:`unittest` compatible container for `pdiffcopy` tests."""
+
+    def test_location_parsing(self):
+        """Test parsing of location expressions."""
+        obj = Location(expression='/foo/bar')
+        assert obj.filename == '/foo/bar'
+        assert not obj.hostname
+        assert not obj.port_number
 
     def test_client_to_server_delta_transfer(self):
         """Test copying a file from the client to the server (using delta transfer)."""
@@ -142,7 +150,7 @@ class DataFile(PropertyManager):
     @lazy_property
     def location(self):
         """The filename accessed through the ``pdiffcopy`` server."""
-        return format("localhost:%i/%s", self.context.server.port_number, self.pathname.lstrip("/"))
+        return format("http://localhost:%i/%s", self.context.server.port_number, self.pathname.lstrip("/"))
 
     @lazy_property
     def pathname(self):

@@ -16,11 +16,11 @@ import requests
 from humanfriendly import Timer, format_size
 from humanfriendly.text import format
 from humanfriendly.terminal.spinners import Spinner
-from six.moves.urllib.parse import urlencode
+from six.moves.urllib.parse import urlencode, urlparse, urlunparse
 from property_manager import PropertyManager, cached_property, mutable_property, set_property
 
 # Modules included in our package.
-from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY
+from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY, DEFAULT_PORT
 from pdiffcopy.hashing import hash_generic
 from pdiffcopy.utils import get_file_info, read_block, resize_file, write_block
 
@@ -166,29 +166,28 @@ class Location(PropertyManager):
     @mutable_property
     def expression(self):
         """The location expression (a string)."""
-        address = ""
         if self.hostname:
-            address = self.hostname
-            if self.port_number:
-                address += ":%i" % self.port_number
-        return address + self.filename
+            netloc = "%s:%s" % (self.hostname, self.port_number)
+            return urlunparse(('http', netloc, self.filename, '', '', ''))
+        else:
+            return self.filename
 
     @expression.setter
     def expression(self, value):
         """Parse a location expression."""
-        self.hostname = None
-        self.port_number = None
-        if value.startswith("/"):
-            self.filename = value
+        parsed_url = urlparse(value)
+        if parsed_url.scheme and parsed_url.scheme != 'http':
+            msg = "Invalid URL scheme! (expected 'http', got %r instead)"
+            raise ValueError(msg % parsed_url.scheme)
+        if parsed_url.hostname:
+            self.filename = parsed_url.path
+            self.hostname = parsed_url.hostname
+            self.port_number = parsed_url.port or DEFAULT_PORT
         else:
-            address, _, filename = value.partition("/")
-            if ":" in address:
-                hostname, _, port = address.partition(":")
-                self.hostname = hostname
-                self.port_number = int(port)
-            else:
-                self.hostname = address
-            self.filename = "/" + filename
+            self.filename = value
+            self.hostname = None
+            self.port_number = None
+        assert self.filename is not None
 
     @mutable_property
     def filename(self):
