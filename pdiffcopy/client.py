@@ -132,6 +132,12 @@ class Client(PropertyManager):
         with Spinner(label="Downloading changed blocks", total=num_blocks) as spinner:
             for i, result in enumerate(pool.imap_unordered(transfer_block_fn, tasks), start=1):
                 spinner.step(progress=i)
+        # Mark the pool as closed.
+        pool.close()
+        # Wait for the workers to terminate gracefully, thereby dumping coverage
+        # statistics when this is being run as part of the test suite, for details
+        # see https://pytest-cov.readthedocs.io/en/latest/subprocess-support.html
+        pool.join()
         logger.info("Downloaded %i blocks (%s) in %s.", len(offsets), formatted_size, timer)
 
 
