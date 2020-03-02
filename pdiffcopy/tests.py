@@ -1,7 +1,7 @@
 # Fast synchronization of large files inspired by rsync.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: February 29, 2020
+# Last Change: March 2, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
 
@@ -17,7 +17,7 @@ import sys
 # External dependencies.
 from executor import execute
 from executor.tcp import EphemeralTCPServer
-from humanfriendly import format
+from humanfriendly.text import format
 from humanfriendly.testing import TemporaryDirectory, TestCase, run_cli
 from property_manager import PropertyManager, lazy_property, required_property
 
