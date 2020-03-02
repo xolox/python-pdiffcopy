@@ -1,18 +1,20 @@
 # Command line interface for pdiffcopy.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: February 29, 2020
+# Last Change: March 2, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
 """
 Usage: pdiffcopy [OPTIONS] [SOURCE, TARGET]
 
-Copy files between systems like rsync, but optimized to copy very large files
-(hundreds of gigabytes) by computing hashes in parallel on multiple CPU cores.
+Copy individual data files between systems, optimized to copy very large files
+(hundreds of gigabytes) by computing fingerprints on multiple CPU cores and
+transferring only the changed blocks (again on multiple CPU cores).
 
-One of SOURCE and TARGET arguments is expected to be the pathname of a local
-file and the other argument is expected to be an expression of the form
-HOST:PORT/PATH. File data will be read from SOURCE and written to TARGET.
+One of the SOURCE and TARGET arguments is expected to be the pathname of a
+local file and the other argument is expected to be a URL that provides the
+location of a remote pdiffcopy server and a remote filename. File data will be
+read from SOURCE and written to TARGET.
 
 If no positional arguments are given the server is started.
 
@@ -20,12 +22,13 @@ Supported options:
 
   -b, --block-size=BYTES
 
-    Customize the block size of the delta transfer. Can be a
-    plain number (bytes) or an expression like 5KB, 1MB, etc.
+    Customize the block size of the delta transfer. Can be a plain
+    integer number (bytes) or an expression like 5K, 1MiB, etc.
 
   -m, --hash-method=NAME
 
-    Customize the hash method of the delta transfer (defaults to 'sha1').
+    Customize the hash method of the delta transfer (defaults to 'sha1'
+    but supports all hash methods provided by the Python hashlib module).
 
   -W, --whole-file
 
@@ -38,7 +41,7 @@ Supported options:
 
   -n, --dry-run
 
-    Scan for differences between the local and remote file and report the
+    Scan for differences between the source and target file and report the
     similarity index, but don't write any changed blocks to the target.
 
   -l, --listen=ADDRESS
