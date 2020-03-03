@@ -1,7 +1,7 @@
 # Fast synchronization of large files inspired by rsync.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: February 29, 2020
+# Last Change: March 3, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
 """Parallel, differential file copy server."""
@@ -15,7 +15,7 @@ from gunicorn.app.base import BaseApplication
 from six import iteritems
 
 # Modules included in our package.
-from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY
+from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY, DEFAULT_PORT
 from pdiffcopy.hashing import hash_generic
 from pdiffcopy.utils import get_file_info, read_block, resize_file, write_block
 
@@ -23,16 +23,12 @@ from pdiffcopy.utils import get_file_info, read_block, resize_file, write_block
 __all__ = (
     "app",
     "blocks_resource",
-    "DEFAULT_PORT",
     "generate_hashes",
     "hashes_resource",
     "info_resource",
     "logger",
     "start_server",
 )
-
-DEFAULT_PORT = 8000
-"""The default port number for the HTTP server."""
 
 # Initialize a logger for this module.
 logger = logging.getLogger(__name__)
