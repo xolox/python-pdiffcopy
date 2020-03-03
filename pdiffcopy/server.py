@@ -27,6 +27,7 @@ __all__ = (
     "hashes_resource",
     "info_resource",
     "logger",
+    "resize_action",
     "start_server",
 )
 
