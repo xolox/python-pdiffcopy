@@ -7,6 +7,7 @@ import os
 
 # External dependencies.
 from humanfriendly import format_size
+from humanfriendly.testing import make_dirs
 
 # Initialize a logger for this module.
 logger = logging.getLogger(__name__)
@@ -54,10 +55,11 @@ def resize_file(filename, size):
     try:
         handle = open(filename, "r+b")
         logger.info("Resizing %s to %s (%s bytes) ..", filename, format_size(size), size)
-    except OSError as e:
+    except IOError as e:
         if e.errno != errno.ENOENT:
             raise
         logger.info("Creating %s with size %s (%s bytes) ..", filename, format_size(size), size)
+        make_dirs(os.path.dirname(filename))
         handle = open(filename, "wb")
     try:
         handle.truncate(size)
