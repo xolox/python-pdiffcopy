@@ -14,7 +14,7 @@ import os
 # External dependencies.
 import requests
 from humanfriendly import Timer, format_size
-from humanfriendly.text import format
+from humanfriendly.text import format, pluralize
 from humanfriendly.terminal.spinners import Spinner
 from six.moves.urllib.parse import urlencode, urlparse, urlunparse
 from property_manager import PropertyManager, cached_property, mutable_property, set_property
@@ -119,17 +119,18 @@ class Client(PropertyManager):
             logger.info("Nothing to do! (no changes to synchronize)")
             return
         formatted_size = format_size(self.block_size * len(offsets))
-        logger.info("Will download %i blocks totaling %s.", len(offsets), formatted_size)
+        action = "download" if self.source.hostname else "upload"
+        logger.info("Will %s %s totaling %s.", action, pluralize(len(offsets), "block"), formatted_size)
         if self.dry_run:
             return
         # Make sure the target file has the right size.
         if not (self.target.exists and self.target.file_size == self.source.file_size):
             self.target.resize(self.source.file_size)
-        # Download changed blocks in parallel.
+        # Transfer changed blocks in parallel.
         num_blocks = len(offsets)
         pool = multiprocessing.Pool(self.concurrency)
         tasks = [(self.source, self.target, offset, self.block_size) for offset in offsets]
-        with Spinner(label="Downloading changed blocks", total=num_blocks) as spinner:
+        with Spinner(label="%sing changed blocks" % action.capitalize(), total=num_blocks) as spinner:
             for i, result in enumerate(pool.imap_unordered(transfer_block_fn, tasks), start=1):
                 spinner.step(progress=i)
         # Mark the pool as closed.
@@ -138,7 +139,7 @@ class Client(PropertyManager):
         # statistics when this is being run as part of the test suite, for details
         # see https://pytest-cov.readthedocs.io/en/latest/subprocess-support.html
         pool.join()
-        logger.info("Downloaded %i blocks (%s) in %s.", len(offsets), formatted_size, timer)
+        logger.info("%sed %i blocks (%s) in %s.", action.capitalize(), len(offsets), formatted_size, timer)
 
 
 def get_hashes_fn(location, **options):
