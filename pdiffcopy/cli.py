@@ -1,7 +1,7 @@
 # Command line interface for pdiffcopy.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: March 2, 2020
+# Last Change: March 5, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
 """
@@ -72,7 +72,6 @@ from humanfriendly import parse_size
 from humanfriendly.terminal import warning, usage
 
 # Modules included in our package.
-from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY
 from pdiffcopy.client import Client
 from pdiffcopy.server import DEFAULT_PORT, start_server
 
@@ -105,32 +104,29 @@ def main():
         warning("Error: %s", e)
         sys.exit(1)
     # Command line option defaults.
-    block_size = BLOCK_SIZE
-    concurrency = DEFAULT_CONCURRENCY
-    delta_transfer = True
-    dry_run = False
-    hash_method = "sha1"
-    listen_address = ("", DEFAULT_PORT)
+    client_opts = {}
+    server_opts = {}
     # Map parsed options to variables.
     for option, value in options:
         if option in ("-b", "--block-size"):
-            block_size = parse_size(value)
+            client_opts["block_size"] = parse_size(value)
         elif option in ("-m", "--hash-method"):
-            hash_method = value
+            client_opts["hash_method"] = value
         elif option in ("-W", "--whole-file"):
-            delta_transfer = False
+            client_opts["delta_transfer"] = False
         elif option in ("-c", "--concurrency"):
-            concurrency = int(value)
+            client_opts["concurrency"] = int(value)
+            server_opts["concurrency"] = int(value)
         elif option in ("-l", "--listen"):
             if value.count(":") == 1:
                 hostname, _, port = value.partition(":")
-                listen_address = (hostname, int(port))
+                server_opts['address'] = (hostname, int(port))
             elif value.isdigit():
-                listen_address = ("", int(value))
+                server_opts['address'] = ("", int(value))
             else:
-                listen_address = (value, DEFAULT_PORT)
+                server_opts['address'] = (value, DEFAULT_PORT)
         elif option in ("-n", "--dry-run"):
-            dry_run = True
+            client_opts["dry_run"] = True
         elif option in ("-v", "--verbose"):
             coloredlogs.increase_verbosity()
         elif option in ("-q", "--quiet"):
@@ -138,19 +134,21 @@ def main():
         elif option in ("-h", "--help"):
             usage(__doc__)
             sys.exit(0)
-    # Run the client or start the server.
-    if arguments:
-        if len(arguments) != 2:
-            warning("Error: Two positional arguments expected!")
-            sys.exit(1)
-        Client(
-            block_size=block_size,
-            concurrency=concurrency,
-            delta_transfer=delta_transfer,
-            dry_run=dry_run,
-            hash_method=hash_method,
-            source=arguments[0],
-            target=arguments[1],
-        ).synchronize()
-    else:
-        start_server(address=listen_address, concurrency=concurrency)
+    # Execute the requested action.
+    try:
+        if arguments:
+            if len(arguments) != 2:
+                warning("Error: Two positional arguments expected!")
+                sys.exit(1)
+            # Run the client.
+            Client(
+                source=arguments[0],
+                target=arguments[1],
+                **client_opts
+            ).synchronize()
+        else:
+            # Start the server.
+            start_server(**server_opts)
+    except Exception:
+        logger.exception("Program terminating due to exception!")
+        sys.exit(1)
