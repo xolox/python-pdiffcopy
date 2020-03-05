@@ -98,8 +98,8 @@ class Client(PropertyManager):
         hash_opts = dict(block_size=self.block_size, concurrency=self.concurrency, method=self.hash_method)
         source_promise = Promise(get_hashes_fn, self.source, **hash_opts)
         target_promise = Promise(get_hashes_fn, self.target, **hash_opts)
-        source_hashes = dict(source_promise.join())
-        target_hashes = dict(target_promise.join())
+        source_hashes = source_promise.join()
+        target_hashes = target_promise.join()
         num_hits = 0
         num_misses = 0
         todo = []
@@ -144,7 +144,7 @@ class Client(PropertyManager):
 
 def get_hashes_fn(location, **options):
     """Adapter for :mod:`multiprocessing` used by :func:`Client.find_changes()`."""
-    return dict(location.get_hashes(**options))
+    return location.get_hashes(**options)
 
 
 def transfer_block_fn(args):
@@ -169,7 +169,7 @@ class Location(PropertyManager):
         """The location expression (a string)."""
         if self.hostname:
             netloc = "%s:%s" % (self.hostname, self.port_number)
-            return urlunparse(('http', netloc, self.filename, '', '', ''))
+            return urlunparse(("http", netloc, self.filename, "", "", ""))
         else:
             return self.filename
 
@@ -177,7 +177,7 @@ class Location(PropertyManager):
     def expression(self, value):
         """Parse a location expression."""
         parsed_url = urlparse(value)
-        if parsed_url.scheme and parsed_url.scheme != 'http':
+        if parsed_url.scheme and parsed_url.scheme != "http":
             msg = "Invalid URL scheme! (expected 'http', got %r instead)"
             raise ValueError(msg % parsed_url.scheme)
         if parsed_url.hostname:
@@ -221,7 +221,7 @@ class Location(PropertyManager):
     def file_size(self):
         """The size of the file in bytes (an integer)."""
         logger.info("Getting file size of %s ..", self.filename)
-        return self.file_info.get('size')
+        return self.file_info.get("size")
 
     def get_hashes(self, **options):
         """
@@ -233,21 +233,27 @@ class Location(PropertyManager):
                   1. A byte offset into the file (an integer).
                   2. The hash of the block starting at that offset (a string).
         """
+        results = {}
         options.update(filename=self.filename)
         if self.hostname:
             logger.info("Requesting hashes from server at %s:%s ..", self.hostname, self.port_number)
             request_url = self.get_url("hashes", **options)
             logger.debug("Requesting %s ..", request_url)
-            response = requests.get(request_url)
+            response = requests.get(request_url, stream=True)
             response.raise_for_status()
-            for line in response.iter_lines():
-                tokens = line.split()
-                yield int(tokens[0]), tokens[1]
+            for line in response.iter_lines(decode_unicode=True):
+                offset, _, digest = line.partition("\t")
+                results[int(offset)] = digest
         else:
-            with Spinner(label="Computing local hashes", total=os.path.getsize(options["filename"])) as spinner:
+            progress = 0
+            block_size = options["block_size"]
+            total = os.path.getsize(options["filename"])
+            with Spinner(label="Computing hashes", total=total) as spinner:
                 for offset, digest in compute_hashes(**options):
-                    yield offset, digest
-                    spinner.step(progress=offset)
+                    results[offset] = digest
+                    progress += block_size
+                    spinner.step(progress)
+        return results
 
     def get_url(self, endpoint, **params):
         """
