@@ -22,10 +22,11 @@ from property_manager import PropertyManager, cached_property, mutable_property,
 # Modules included in our package.
 from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY, DEFAULT_PORT
 from pdiffcopy.hashing import compute_hashes
+from pdiffcopy.mp import Promise
 from pdiffcopy.utils import get_file_info, read_block, resize_file, write_block
 
 # Public identifiers that require documentation.
-__all__ = ("Client", "get_hashes_fn", "Location", "logger", "Promise", "transfer_block_fn")
+__all__ = ("Client", "get_hashes_fn", "Location", "logger", "transfer_block_fn")
 
 # Initialize a logger for this module.
 logger = logging.getLogger(__name__)
@@ -96,8 +97,8 @@ class Client(PropertyManager):
         """Helper for :func:`synchronize()` to compute the similarity index."""
         timer = Timer()
         hash_opts = dict(block_size=self.block_size, concurrency=self.concurrency, method=self.hash_method)
-        source_promise = Promise(get_hashes_fn, self.source, **hash_opts)
-        target_promise = Promise(get_hashes_fn, self.target, **hash_opts)
+        source_promise = Promise(target=get_hashes_fn, args=[self.source], kwargs=hash_opts)
+        target_promise = Promise(target=get_hashes_fn, args=[self.target], kwargs=hash_opts)
         source_hashes = source_promise.join()
         target_hashes = target_promise.join()
         num_hits = 0
@@ -314,37 +315,3 @@ class Location(PropertyManager):
             response.raise_for_status()
         else:
             write_block(self.filename, offset, data)
-
-
-class Promise(multiprocessing.Process):
-
-    """Function executed in a subprocess (asynchronously)."""
-
-    def __init__(self, target, *args, **kw):
-        """Initialize a :class:`Promise` object."""
-        super(Promise, self).__init__()
-        self.target = target
-        self.args = args
-        self.kw = kw
-        self.queue = multiprocessing.Queue()
-        self.start()
-
-    def run(self):
-        """Run the target function in a newly spawned subprocess."""
-        try:
-            status = True
-            result = self.target(*self.args, **self.kw)
-        except Exception as e:
-            logger.exception("Promise raised exception! (will re-raise in parent)")
-            status = False
-            result = e
-        self.queue.put((status, result))
-
-    def join(self):
-        """Wait for the background process to finish."""
-        status, result = self.queue.get()
-        super(Promise, self).join()
-        if status:
-            return result
-        else:
-            raise result
