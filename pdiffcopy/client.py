@@ -1,14 +1,14 @@
 # Fast synchronization of large files inspired by rsync.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: March 5, 2020
+# Last Change: March 6, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
 """Parallel, differential file copy client."""
 
 # Standard library modules.
+import functools
 import logging
-import multiprocessing
 import os
 
 # External dependencies.
@@ -22,7 +22,7 @@ from property_manager import PropertyManager, cached_property, mutable_property,
 # Modules included in our package.
 from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY, DEFAULT_PORT
 from pdiffcopy.hashing import compute_hashes
-from pdiffcopy.mp import Promise
+from pdiffcopy.mp import Promise, WorkerPool
 from pdiffcopy.utils import get_file_info, read_block, resize_file, write_block
 
 # Public identifiers that require documentation.
@@ -128,18 +128,17 @@ class Client(PropertyManager):
         if not (self.target.exists and self.target.file_size == self.source.file_size):
             self.target.resize(self.source.file_size)
         # Transfer changed blocks in parallel.
-        num_blocks = len(offsets)
-        pool = multiprocessing.Pool(self.concurrency)
-        tasks = [(self.source, self.target, offset, self.block_size) for offset in offsets]
-        with Spinner(label="%sing changed blocks" % action.capitalize(), total=num_blocks) as spinner:
-            for i, result in enumerate(pool.imap_unordered(transfer_block_fn, tasks), start=1):
+        pool = WorkerPool(
+            concurrency=self.concurrency,
+            generator_fn=functools.partial(iter, offsets),
+            worker_fn=functools.partial(
+                transfer_block_fn, block_size=self.block_size, source=self.source, target=self.target
+            ),
+        )
+        spinner = Spinner(label="%sing changed blocks" % action.capitalize(), total=len(offsets))
+        with pool, spinner:
+            for i, result in enumerate(pool, start=1):
                 spinner.step(progress=i)
-        # Mark the pool as closed.
-        pool.close()
-        # Wait for the workers to terminate gracefully, thereby dumping coverage
-        # statistics when this is being run as part of the test suite, for details
-        # see https://pytest-cov.readthedocs.io/en/latest/subprocess-support.html
-        pool.join()
         logger.info("%sed %i blocks (%s) in %s.", action.capitalize(), len(offsets), formatted_size, timer)
 
 
@@ -148,11 +147,9 @@ def get_hashes_fn(location, **options):
     return location.get_hashes(**options)
 
 
-def transfer_block_fn(args):
+def transfer_block_fn(offset, source, target, block_size):
     """Adapter for :mod:`multiprocessing` used by :func:`Client.transfer_changes()`."""
-    source, target, offset, block_size = args
-    data = source.read_block(offset, block_size)
-    target.write_block(offset, data)
+    target.write_block(offset, source.read_block(offset, block_size))
 
 
 class Location(PropertyManager):

@@ -1,7 +1,7 @@
 # Fast synchronization of large files inspired by rsync.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: March 5, 2020
+# Last Change: March 6, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
 """
@@ -164,7 +164,9 @@ class WorkerPool(PropertyManager):
                 # Terminate workers that are still alive.
                 worker.terminate()
             else:
-                # Join dead workers to release their resources.
+                # Join workers that have returned in order to cleanup associated resources and dump
+                # coverage statistics when this is being run as part of the test suite, for details
+                # see https://pytest-cov.readthedocs.io/en/latest/subprocess-support.html.
                 worker.join()
 
 
