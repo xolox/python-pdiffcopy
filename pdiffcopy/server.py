@@ -1,7 +1,7 @@
 # Fast synchronization of large files inspired by rsync.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: March 3, 2020
+# Last Change: March 5, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
 """Parallel, differential file copy server."""
@@ -16,7 +16,7 @@ from six import iteritems
 
 # Modules included in our package.
 from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY, DEFAULT_PORT
-from pdiffcopy.hashing import hash_generic
+from pdiffcopy.hashing import compute_hashes
 from pdiffcopy.utils import get_file_info, read_block, resize_file, write_block
 
 # Public identifiers that require documentation.
@@ -97,11 +97,11 @@ def generate_hashes(**options):
     """
     Helper for :func:`hashes_resource()`.
 
-    :param options: See :func:`~pdiffcopy.hashing.hash_generic()`.
+    :param options: See :func:`~pdiffcopy.hashing.compute_hashes()`.
     :returns: A generator of strings, one line each, with two fields per
               line (offset and digest) delimited by a tab character.
     """
-    for offset, digest in hash_generic(**options):
+    for offset, digest in compute_hashes(**options):
         yield "%i\t%s\n" % (offset, digest)
 
 

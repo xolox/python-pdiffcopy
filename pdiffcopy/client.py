@@ -1,7 +1,7 @@
 # Fast synchronization of large files inspired by rsync.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: March 2, 2020
+# Last Change: March 5, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
 """Parallel, differential file copy client."""
@@ -21,7 +21,7 @@ from property_manager import PropertyManager, cached_property, mutable_property,
 
 # Modules included in our package.
 from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY, DEFAULT_PORT
-from pdiffcopy.hashing import hash_generic
+from pdiffcopy.hashing import compute_hashes
 from pdiffcopy.utils import get_file_info, read_block, resize_file, write_block
 
 # Public identifiers that require documentation.
@@ -245,7 +245,7 @@ class Location(PropertyManager):
                 yield int(tokens[0]), tokens[1]
         else:
             with Spinner(label="Computing local hashes", total=os.path.getsize(options["filename"])) as spinner:
-                for offset, digest in hash_generic(**options):
+                for offset, digest in compute_hashes(**options):
                     yield offset, digest
                     spinner.step(progress=offset)
 

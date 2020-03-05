@@ -1,7 +1,7 @@
 # Fast synchronization of large files inspired by rsync.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: March 2, 2020
+# Last Change: March 6, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
 
@@ -13,6 +13,7 @@ import logging
 import os
 import random
 import sys
+import tempfile
 
 # External dependencies.
 from executor import execute
@@ -24,6 +25,7 @@ from property_manager import PropertyManager, lazy_property, required_property
 # Modules included in our package.
 from pdiffcopy.cli import main
 from pdiffcopy.client import Location
+from pdiffcopy.hashing import compute_hashes
 
 # Initialize a logger for this module.
 logger = logging.getLogger(__name__)
@@ -32,13 +34,6 @@ logger = logging.getLogger(__name__)
 class TestSuite(TestCase):
 
     """:mod:`unittest` compatible container for `pdiffcopy` tests."""
-
-    def test_location_parsing(self):
-        """Test parsing of location expressions."""
-        obj = Location(expression='/foo/bar')
-        assert obj.filename == '/foo/bar'
-        assert not obj.hostname
-        assert not obj.port_number
 
     def test_client_to_server_delta_transfer(self):
         """Test copying a file from the client to the server (using delta transfer)."""
@@ -61,6 +56,25 @@ class TestSuite(TestCase):
             assert returncode == 0
             # Check that the input and output file have the same content.
             assert filecmp.cmp(context.source.pathname, context.target.pathname, shallow=False)
+
+    def test_compute_hashes(self):
+        """Test that serial and parallel hashing produce the same result."""
+        with tempfile.NamedTemporaryFile() as temporary_file:
+            execute("dd", "if=/dev/urandom", "of=%s" % temporary_file.name, "bs=1M", "count=10")
+            serial_hashes = dict(
+                compute_hashes(filename=temporary_file.name, block_size=1024 * 1024, concurrency=1, method="sha1")
+            )
+            parallel_hashes = dict(
+                compute_hashes(filename=temporary_file.name, block_size=1024 * 1024, concurrency=4, method="sha1")
+            )
+            assert serial_hashes == parallel_hashes
+
+    def test_location_parsing(self):
+        """Test parsing of location expressions."""
+        obj = Location(expression="/foo/bar")
+        assert obj.filename == "/foo/bar"
+        assert not obj.hostname
+        assert not obj.port_number
 
     def test_main_module(self):
         """Test the ``python -m pdiffcopy`` command."""

@@ -1,10 +1,10 @@
 # Fast synchronization of large files inspired by rsync.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: February 29, 2020
+# Last Change: March 5, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
-"""Serial and parallel file hashing functions."""
+"""Parallel hashing of files using :mod:`multiprocessing`."""
 
 # Standard library modules.
 import hashlib
@@ -20,30 +20,7 @@ from six.moves import range
 logger = logging.getLogger(__name__)
 
 
-def hash_generic(filename, block_size, concurrency, method):
-    """Automatically pick between :func:`hash_serial()` and :func:`hash_parallel()`."""
-    if concurrency == 1:
-        return hash_serial(filename, block_size, method)
-    else:
-        return hash_parallel(filename, block_size, method, concurrency)
-
-
-def hash_serial(filename, block_size, method):
-    """Compute checksums of a file in blocks (serial)."""
-    logger.info("Computing hashes of %s without concurrency ..", filename)
-    offset = 0
-    with open(filename, "rb") as handle:
-        while True:
-            data = handle.read(block_size)
-            if not data:
-                break
-            context = hashlib.new(method)
-            context.update(data)
-            yield offset, context.hexdigest()
-            offset += block_size
-
-
-def hash_parallel(filename, block_size, method, concurrency):
+def compute_hashes(filename, block_size, method, concurrency):
     """Compute checksums of a file in blocks (parallel)."""
     logger.info("Computing hashes of %s with a concurrency of %s ..", filename, concurrency)
     filesize = os.path.getsize(filename)
@@ -96,7 +73,7 @@ class Worker(multiprocessing.Process):
     The reason we define a custom :class:`multiprocessing.Process`
     and manage our own pool of workers (as opposed to just using
     :class:`multiprocessing.pool.Pool`) is mainly for performance
-    reasons (see for example the file handle cache).
+    reasons (to minimize the amount of data going back and forth).
     """
 
     def __init__(self, filename, block_size, method, input_queue, output_queue):
