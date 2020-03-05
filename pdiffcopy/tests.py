@@ -71,10 +71,21 @@ class TestSuite(TestCase):
 
     def test_location_parsing(self):
         """Test parsing of location expressions."""
+        # Check that locations default to local files.
         obj = Location(expression="/foo/bar")
+        assert obj.expression == "/foo/bar"
         assert obj.filename == "/foo/bar"
         assert not obj.hostname
         assert not obj.port_number
+        # Check that locations support remote files.
+        obj = Location(expression="http://server:12345/foo/bar")
+        assert obj.expression == "http://server:12345/foo/bar"
+        assert obj.filename == "/foo/bar"
+        assert obj.hostname == "server"
+        assert obj.port_number == 12345
+        # Check that unsupported URL schemes raise an exception.
+        with self.assertRaises(ValueError):
+            Location(expression='udp://server/filename')
 
     def test_main_module(self):
         """Test the ``python -m pdiffcopy`` command."""
