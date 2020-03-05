@@ -9,6 +9,7 @@
 
 # Standard library modules.
 import filecmp
+import functools
 import logging
 import os
 import random
@@ -26,6 +27,7 @@ from property_manager import PropertyManager, lazy_property, required_property
 from pdiffcopy.cli import main
 from pdiffcopy.client import Location
 from pdiffcopy.hashing import compute_hashes
+from pdiffcopy.mp import WorkerPool
 
 # Initialize a logger for this module.
 logger = logging.getLogger(__name__)
@@ -85,7 +87,7 @@ class TestSuite(TestCase):
         assert obj.port_number == 12345
         # Check that unsupported URL schemes raise an exception.
         with self.assertRaises(ValueError):
-            Location(expression='udp://server/filename')
+            Location(expression="udp://server/filename")
 
     def test_main_module(self):
         """Test the ``python -m pdiffcopy`` command."""
@@ -120,6 +122,19 @@ class TestSuite(TestCase):
             returncode, output = run_cli(main, option)
             assert returncode == 0
             assert "Usage:" in output
+
+    def test_mp(self):
+        """Test the multiprocessing abstractions."""
+        options = dict(concurrency=3, generator_fn=functools.partial(range, 10), worker_fn=mp_worker)
+        with WorkerPool(**options) as pool:
+            expected = sorted(map(mp_worker, range(10)))
+            results = sorted([n for n in pool])
+            assert results == expected
+
+
+def mp_worker(n):
+    """Simple worker function to test :class:`.WorkerPool`."""
+    return n * 2
 
 
 class Context(PropertyManager):
