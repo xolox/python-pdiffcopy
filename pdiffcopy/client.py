@@ -90,8 +90,11 @@ class Client(PropertyManager):
         else:
             logger.info("Performing whole file copy (skipping delta transfer) ..")
             offsets = range(0, self.source.file_size, self.block_size)
-        self.transfer_changes(offsets)
-        logger.info("Synchronized changes in %s ..", timer)
+        if offsets:
+            self.transfer_changes(offsets)
+            logger.info("Synchronized changes in %s ..", timer)
+        else:
+            logger.info("Nothing to do! (no changes to synchronize)")
 
     def find_changes(self):
         """Helper for :func:`synchronize()` to compute the similarity index."""
@@ -116,9 +119,6 @@ class Client(PropertyManager):
     def transfer_changes(self, offsets):
         """Helper for :func:`synchronize()` to transfer the differences."""
         timer = Timer()
-        if not offsets:
-            logger.info("Nothing to do! (no changes to synchronize)")
-            return
         formatted_size = format_size(self.block_size * len(offsets))
         action = "download" if self.source.hostname else "upload"
         logger.info("Will %s %s totaling %s.", action, pluralize(len(offsets), "block"), formatted_size)
