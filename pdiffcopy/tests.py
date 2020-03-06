@@ -35,9 +35,10 @@ logger = logging.getLogger(__name__)
 
 class TestSuite(TestCase):
 
-    """:mod:`unittest` compatible container for `pdiffcopy` tests."""
+    """:mod:`unittest` compatible container for pdiffcopy test suite."""
 
     def test_benchmark(self):
+        """Test coverage for the benchmark with rsync integration."""
         with Context() as context:
             # Create the target file.
             context.target.generate()
