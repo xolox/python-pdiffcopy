@@ -62,7 +62,7 @@ def get_absolute_path(*args):
 setup(
     name="pdiffcopy",
     version=get_version("pdiffcopy", "__init__.py"),
-    description="Fast synchronization of large files inspired by rsync",
+    description="Fast large file synchronization inspired by rsync",
     long_description=get_contents("README.rst"),
     url="https://pdiffcopy.readthedocs.io",
     author="Peter Odding",

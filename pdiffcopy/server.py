@@ -1,4 +1,4 @@
-# Fast synchronization of large files inspired by rsync.
+# Fast large file synchronization inspired by rsync.
 #
 # Author: Peter Odding <peter@peterodding.com>
 # Last Change: March 6, 2020

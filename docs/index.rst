@@ -1,5 +1,5 @@
-pdiffcopy: Fast synchronization of large files inspired by rsync
-================================================================
+pdiffcopy: Fast large file synchronization inspired by rsync
+============================================================
 
 Welcome to the documentation of `pdiffcopy` version |release|!
 The following sections are available:

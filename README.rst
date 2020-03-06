@@ -1,8 +1,6 @@
 pdiffcopy: Fast large file synchronization inspired by rsync
 ============================================================
 
-.. pdiffcopy: Fast synchronization of large files inspired by rsync
-
 .. image:: https://travis-ci.org/xolox/python-pdiffcopy.svg?branch=master
    :target: https://travis-ci.org/xolox/python-pdiffcopy
 
