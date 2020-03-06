@@ -1,0 +1,21 @@
+language: python
+cache: pip
+matrix:
+  include:
+  - python: 2.7
+  - python: 3.5
+  - python: 3.6
+  - python: 3.7
+  - python: 3.8
+  - python: 3.9-dev
+install:
+  - pip install --upgrade --requirement=requirements-travis.txt
+  - LC_ALL=C pip install .
+script:
+  - make check
+  - make test
+after_success:
+  - coveralls
+branches:
+  except:
+    - /^[0-9]/
