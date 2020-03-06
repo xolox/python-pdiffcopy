@@ -38,7 +38,7 @@ class TestSuite(TestCase):
     """:mod:`unittest` compatible container for `pdiffcopy` tests."""
 
     def test_client_to_server_delta_transfer(self):
-        """Test copying a file from the client to the server (using delta transfer)."""
+        """Test copying a file from the client to the server (with delta transfer)."""
         with Context() as context:
             # Create the target file.
             context.target.generate()
@@ -47,7 +47,19 @@ class TestSuite(TestCase):
             # Check that the command line interface reported success.
             assert returncode == 0
             # Check that the input and output file have the same content.
-            assert filecmp.cmp(context.source.pathname, context.target.pathname, shallow=False)
+            assert filecmp.cmp(context.source.pathname, context.target.pathname)
+
+    def test_client_to_server_dry_run(self):
+        """Test copying a file from the client to the server (dry run)."""
+        with Context() as context:
+            # Create the target file.
+            context.target.generate()
+            # Synchronize the file using the command line interface.
+            returncode, output = run_cli(main, '-n', context.source.pathname, context.target.location)
+            # Check that the command line interface reported success.
+            assert returncode == 0
+            # Check that the input and output file differ still.
+            assert not filecmp.cmp(context.source.pathname, context.target.pathname)
 
     def test_client_to_server_full_transfer(self):
         """Test copying a file from the client to the server (no delta transfer)."""
@@ -57,7 +69,18 @@ class TestSuite(TestCase):
             # Check that the command line interface reported success.
             assert returncode == 0
             # Check that the input and output file have the same content.
-            assert filecmp.cmp(context.source.pathname, context.target.pathname, shallow=False)
+            assert filecmp.cmp(context.source.pathname, context.target.pathname)
+
+    def test_client_to_server_no_transfer(self):
+        """Test copying a file from the client to the server (nothing to transfer)."""
+        with Context() as context:
+            context.target.copy(context.source)
+            # Synchronize the file using the command line interface.
+            returncode, output = run_cli(main, context.source.pathname, context.target.location)
+            # Check that the command line interface reported success.
+            assert returncode == 0
+            # Check that the input and output file have the same content.
+            assert filecmp.cmp(context.source.pathname, context.target.pathname)
 
     def test_compute_hashes(self):
         """Test that serial and parallel hashing produce the same result."""
@@ -95,7 +118,7 @@ class TestSuite(TestCase):
         assert "Usage:" in output
 
     def test_server_to_client_delta_transfer(self):
-        """Test copying a file from the server to the client (using delta transfer)."""
+        """Test copying a file from the server to the client (with delta transfer)."""
         with Context() as context:
             # Create the target file.
             context.target.generate()
@@ -104,7 +127,19 @@ class TestSuite(TestCase):
             # Check that the command line interface reported success.
             assert returncode == 0
             # Check that the input and output file have the same content.
-            assert filecmp.cmp(context.source.pathname, context.target.pathname, shallow=False)
+            assert filecmp.cmp(context.source.pathname, context.target.pathname)
+
+    def test_server_to_client_dry_run(self):
+        """Test copying a file from the server to the client (dry run)."""
+        with Context() as context:
+            # Create the target file.
+            context.target.generate()
+            # Synchronize the file using the command line interface.
+            returncode, output = run_cli(main, '-n', context.source.location, context.target.pathname)
+            # Check that the command line interface reported success.
+            assert returncode == 0
+            # Check that the input and output file have the same content.
+            assert not filecmp.cmp(context.source.pathname, context.target.pathname)
 
     def test_server_to_client_full_transfer(self):
         """Test copying a file from the server to the client (no delta transfer)."""
@@ -114,7 +149,18 @@ class TestSuite(TestCase):
             # Check that the command line interface reported success.
             assert returncode == 0
             # Check that the input and output file have the same content.
-            assert filecmp.cmp(context.source.pathname, context.target.pathname, shallow=False)
+            assert filecmp.cmp(context.source.pathname, context.target.pathname)
+
+    def test_server_to_client_no_transfer(self):
+        """Test copying a file from the server to the client (nothing to transfer)."""
+        with Context() as context:
+            context.target.copy(context.source)
+            # Synchronize the file using the command line interface.
+            returncode, output = run_cli(main, context.source.location, context.target.pathname)
+            # Check that the command line interface reported success.
+            assert returncode == 0
+            # Check that the input and output file have the same content.
+            assert filecmp.cmp(context.source.pathname, context.target.pathname)
 
     def test_usage_message(self):
         """Test the ``pdifcopy --help`` command."""
@@ -202,6 +248,10 @@ class DataFile(PropertyManager):
         num_megabytes = random.randint(10, 25)
         logger.info("Generating datafile of %s MB at %s ..", num_megabytes, self.pathname)
         execute("dd", "if=/dev/urandom", "of=%s" % self.pathname, "bs=1M", "count=%s" % num_megabytes)
+
+    def copy(self, other):
+        """Copy another data file."""
+        execute("cp", other.pathname, self.pathname)
 
 
 class TemporaryServer(EphemeralTCPServer):
