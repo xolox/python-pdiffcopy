@@ -8,19 +8,24 @@
 
 # Standard library modules.
 import functools
-import logging
 import os
+import subprocess
 
 # External dependencies.
 import requests
 from humanfriendly import Timer, format_size
-from humanfriendly.text import format, pluralize
+from humanfriendly.prompts import prompt_for_confirmation
+from humanfriendly.tables import format_pretty_table
+from humanfriendly.terminal import output
 from humanfriendly.terminal.spinners import Spinner
-from six.moves.urllib.parse import urlencode, urlparse, urlunparse
+from humanfriendly.text import compact, format, pluralize
 from property_manager import PropertyManager, cached_property, mutable_property, set_property
+from six.moves.urllib.parse import urlencode, urlparse, urlunparse
+from verboselogs import VerboseLogger
 
 # Modules included in our package.
 from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY, DEFAULT_PORT
+from pdiffcopy.exceptions import BenchmarkAbortedError
 from pdiffcopy.hashing import compute_hashes
 from pdiffcopy.mp import Promise, WorkerPool
 from pdiffcopy.utils import get_file_info, read_block, resize_file, write_block
@@ -29,12 +34,17 @@ from pdiffcopy.utils import get_file_info, read_block, resize_file, write_block
 __all__ = ("Client", "get_hashes_fn", "Location", "logger", "transfer_block_fn")
 
 # Initialize a logger for this module.
-logger = logging.getLogger(__name__)
+logger = VerboseLogger(__name__)
 
 
 class Client(PropertyManager):
 
     """Python API for the client side of the ``pdiffcopy`` program."""
+
+    @mutable_property
+    def benchmark(self):
+        """How many times the benchmark should be run (an integer, defaults to 0)."""
+        return 0
 
     @mutable_property
     def block_size(self):
@@ -79,8 +89,89 @@ class Client(PropertyManager):
         """Automatically coerce :attr:`target` to a :class:`Location`."""
         set_property(self, "target", Location(expression=value))
 
+    def mutate_target(self, percentage):
+        """Invalidate a percentage of the data in the :attr:`target` file."""
+        if self.target.hostname:
+            raise TypeError("Benchmark requires local target file!")
+        num_bytes = self.target.file_size / 100 * percentage
+        if self.target.file_size > 1024 * 1024 * 1024:
+            block_size = 1024 * 1024
+        else:
+            block_size = 1024 * 256
+        logger.notice("Mutating %i%% of the target file ..", percentage)
+        with open(self.target.filename, "r+b") as handle:
+            block = "\0" * block_size
+            for i in range(num_bytes / block_size):
+                handle.write(block)
+
+    def run_benchmark(self):
+        """Benchmark the effectiveness of the delta transfer implementation."""
+        # Make sure the operator realizes what we're going to do, before it happens.
+        if os.environ.get("PDIFFCOPY_BENCHMARK") != "allowed":
+            logger.notice("Set $PDIFFCOPY_BENCHMARK=allowed to bypass the following interactive prompt.")
+            question = """
+                This will mutate the target file and then restore
+                its original contents. Are you sure this is okay?
+            """
+            if not prompt_for_confirmation(compact(question), default=False):
+                raise BenchmarkAbortedError("Permission to run benchmark denied.")
+        samples = []
+        logger.info("Performing initial synchronization to level the playing ground ..")
+        self.synchronize_once()
+        # If the target file didn't exist before we created it then
+        # self.target.exists may have cached the value False.
+        self.clear_cached_properties()
+        # Get the rsync configuration from environment variables.
+        rsync_server = os.environ.get("PDIFFCOPY_BENCHMARK_RSYNC_SERVER")
+        rsync_module = os.environ.get("PDIFFCOPY_BENCHMARK_RSYNC_MODULE")
+        rsync_root = os.environ.get("PDIFFCOPY_BENCHMARK_RSYNC_ROOT")
+        have_rsync = rsync_server and rsync_module and rsync_root
+        # Run the benchmark for the requested number of iterations.
+        for i in range(1, self.benchmark + 1):
+            # Initialize timers to compare pdiffcopy and rsync runtime.
+            pdiffcopy_timer = Timer(resumable=True)
+            rsync_timer = Timer(resumable=True)
+            # Mutate the target file.
+            difference = 100 / self.benchmark * i
+            self.mutate_target(difference)
+            # Synchronize using pdiffcopy.
+            with Timer(resumable=True) as pdiffcopy_timer:
+                num_blocks = self.synchronize_once()
+            # Synchronize using rsync?
+            if have_rsync:
+                self.mutate_target(difference)
+                with rsync_timer:
+                    filename = os.path.relpath(self.target.filename, rsync_root)
+                    expression = format("%s::%s", rsync_server, os.path.join(rsync_module, filename))
+                    logger.info("Synchronizing changes using rsync ..")
+                    subprocess.check_call(["rsync", expression, self.target.filename])
+                    logger.info("Synchronized changes using rsync in %s ..", rsync_timer)
+            # Summarize the results of this iteration.
+            metrics = ["%i%%" % difference]
+            metrics.append(format_size(num_blocks * self.block_size, binary=True))
+            metrics.append(str(pdiffcopy_timer))
+            if have_rsync:
+                metrics.append(str(rsync_timer))
+            samples.append(metrics)
+        # Render an overview of the results in the form of a table.
+        column_names = ["Delta size", "Data transferred", "Runtime of pdiffcopy"]
+        if have_rsync:
+            column_names.append("Runtime of rsync")
+        output(format_pretty_table(samples, column_names=column_names))
+
     def synchronize(self):
-        """Synchronize from :attr:`source` to :attr:`target`."""
+        """Synchronize from :attr:`source` to :attr:`target` (possibly more than once, see :attr:`benchmark`)."""
+        if self.benchmark > 0:
+            self.run_benchmark()
+        else:
+            self.synchronize_once()
+
+    def synchronize_once(self):
+        """
+        Synchronize from :attr:`source` to :attr:`target`.
+
+        :returns: The number of blocks that differed (an integer).
+        """
         timer = Timer()
         if self.delta_transfer and not self.target.exists:
             logger.info("Disabling delta transfer because target file doesn't exist ..")
@@ -96,6 +187,7 @@ class Client(PropertyManager):
             logger.info("Synchronized changes in %s ..", timer)
         else:
             logger.info("Nothing to do! (file contents match)")
+        return len(offsets)
 
     def find_changes(self):
         """Helper for :func:`synchronize()` to compute the similarity index."""
@@ -119,7 +211,12 @@ class Client(PropertyManager):
         return todo
 
     def transfer_changes(self, offsets):
-        """Helper for :func:`synchronize()` to transfer the differences."""
+        """
+        Helper for :func:`synchronize()` to transfer the differences.
+
+        :param offsets: A list of integers with the byte offsets of the blocks
+                        to copy from :attr:`source` to :attr:`target`.
+        """
         timer = Timer()
         formatted_size = format_size(self.block_size * len(offsets), binary=True)
         action = "download" if self.source.hostname else "upload"

@@ -44,6 +44,13 @@ Supported options:
     Scan for differences between the source and target file and report the
     similarity index, but don't write any changed blocks to the target.
 
+  -B, --benchmark=COUNT
+
+    Evaluate the effectiveness of delta transfer by mutating the TARGET
+    file (which must be a local file) and resynchronizing its contents.
+    This process is repeated COUNT times, with varying similarity.
+    At the end an overview is printed.
+
   -l, --listen=ADDRESS
 
     Listen on the specified IP:PORT or PORT.
@@ -71,6 +78,9 @@ import coloredlogs
 from humanfriendly import parse_size
 from humanfriendly.terminal import warning, usage
 
+# Modules included in our package.
+from pdiffcopy.exceptions import DependencyError
+
 # Initialize a logger for this module.
 logger = logging.getLogger(__name__)
 
@@ -83,12 +93,13 @@ def main():
     try:
         options, arguments = getopt.gnu_getopt(
             sys.argv[1:],
-            "b:m:Wc:l:nvqh",
+            "b:m:Wc:B:l:nvqh",
             [
                 "block-size=",
                 "hash-method=",
                 "whole-file",
                 "concurrency=",
+                "benchmark=",
                 "listen=",
                 "dry-run",
                 "verbose",
@@ -113,6 +124,8 @@ def main():
         elif option in ("-c", "--concurrency"):
             client_opts["concurrency"] = int(value)
             server_opts["concurrency"] = int(value)
+        elif option in ("-B", "--benchmark"):
+            client_opts["benchmark"] = int(value)
         elif option in ("-l", "--listen"):
             server_opts["address"] = value
         elif option in ("-n", "--dry-run"):
@@ -147,8 +160,10 @@ def run_client(**options):
         Client(**options).synchronize()
     except ImportError:
         raise DependencyError(
-            "Installation requirements seem to be missing! You can "
-            "install them using 'pip install pdiffcopy[client]'."
+            """
+            Installation requirements seem to be missing! You can
+            install them using 'pip install pdiffcopy[client]'.
+            """
         )
 
 
@@ -159,11 +174,8 @@ def run_server(**options):
         return start_server(**options)
     except ImportError:
         raise DependencyError(
-            "Installation requirements seem to be missing! You can "
-            "install them using 'pip install pdiffcopy[server]'."
+            """
+            Installation requirements seem to be missing! You can
+            install them using 'pip install pdiffcopy[server]'.
+            """
         )
-
-
-class DependencyError(Exception):
-
-    """Raised when client/server dependencies are missing."""
