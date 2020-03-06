@@ -7,9 +7,8 @@
 """
 Usage: pdiffcopy [OPTIONS] [SOURCE, TARGET]
 
-Copy individual data files between systems, optimized to copy very large files
-(hundreds of gigabytes) by computing fingerprints on multiple CPU cores and
-transferring only the changed blocks (again on multiple CPU cores).
+Synchronize large binary data files between Linux servers at blazing speeds
+by performing delta transfers and spreading the work over many CPU cores.
 
 One of the SOURCE and TARGET arguments is expected to be the pathname of a
 local file and the other argument is expected to be a URL that provides the
@@ -57,11 +56,11 @@ Supported options:
 
   -v, --verbose
 
-    Increase logging verbosity.
+    Increase logging verbosity (can be repeated).
 
   -q, --quiet
 
-    Decrease logging verbosity.
+    Decrease logging verbosity (can be repeated).
 
   -h, --help
 

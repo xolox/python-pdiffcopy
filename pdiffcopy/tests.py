@@ -37,13 +37,41 @@ class TestSuite(TestCase):
 
     """:mod:`unittest` compatible container for `pdiffcopy` tests."""
 
+    def test_benchmark(self):
+        with Context() as context:
+            # Create the target file.
+            context.target.generate()
+            # Generate a temporary rsync daemon configuration.
+            rsyncd_config_file = os.path.join(context.directory.temporary_directory, "rsyncd.conf")
+            rsyncd_module_name = "pdiffcopy_test"
+            with open(rsyncd_config_file, "w") as handle:
+                handle.write("[%s]\n" % rsyncd_module_name)
+                handle.write("path = %s\n" % context.directory.temporary_directory)
+                handle.write("use chroot = false\n")
+            # Start the rsync daemon based on the generated configuration file.
+            with RsyncDaemon(rsyncd_config_file) as rsyncd:
+                # Run the benchmark without user interaction.
+                os.environ["PDIFFCOPY_BENCHMARK"] = "allowed"
+                # Instruct the benchmark to test rsync as well.
+                os.environ["PDIFFCOPY_BENCHMARK_RSYNC_SERVER"] = "localhost:%i" % rsyncd.port_number
+                os.environ["PDIFFCOPY_BENCHMARK_RSYNC_MODULE"] = rsyncd_module_name
+                os.environ["PDIFFCOPY_BENCHMARK_RSYNC_ROOT"] = context.directory.temporary_directory
+                # Run the benchmark using the command line interface.
+                returncode, output = run_cli(
+                    main, "--benchmark=5", context.source.location, context.target.pathname, capture=False
+                )
+                # Check that the command line interface reported success.
+                assert returncode == 0
+                # Check that the input and output file have the same content.
+                assert filecmp.cmp(context.source.pathname, context.target.pathname)
+
     def test_client_to_server_delta_transfer(self):
         """Test copying a file from the client to the server (with delta transfer)."""
         with Context() as context:
             # Create the target file.
             context.target.generate()
             # Synchronize the file using the command line interface.
-            returncode, output = run_cli(main, context.source.pathname, context.target.location)
+            returncode, output = run_cli(main, context.source.pathname, context.target.location, capture=False)
             # Check that the command line interface reported success.
             assert returncode == 0
             # Check that the input and output file have the same content.
@@ -55,7 +83,7 @@ class TestSuite(TestCase):
             # Create the target file.
             context.target.generate()
             # Synchronize the file using the command line interface.
-            returncode, output = run_cli(main, '-n', context.source.pathname, context.target.location)
+            returncode, output = run_cli(main, "-n", context.source.pathname, context.target.location, capture=False)
             # Check that the command line interface reported success.
             assert returncode == 0
             # Check that the input and output file differ still.
@@ -65,7 +93,7 @@ class TestSuite(TestCase):
         """Test copying a file from the client to the server (no delta transfer)."""
         with Context() as context:
             # Synchronize the file using the command line interface.
-            returncode, output = run_cli(main, context.source.pathname, context.target.location)
+            returncode, output = run_cli(main, context.source.pathname, context.target.location, capture=False)
             # Check that the command line interface reported success.
             assert returncode == 0
             # Check that the input and output file have the same content.
@@ -76,7 +104,7 @@ class TestSuite(TestCase):
         with Context() as context:
             context.target.copy(context.source)
             # Synchronize the file using the command line interface.
-            returncode, output = run_cli(main, context.source.pathname, context.target.location)
+            returncode, output = run_cli(main, context.source.pathname, context.target.location, capture=False)
             # Check that the command line interface reported success.
             assert returncode == 0
             # Check that the input and output file have the same content.
@@ -123,7 +151,7 @@ class TestSuite(TestCase):
             # Create the target file.
             context.target.generate()
             # Synchronize the file using the command line interface.
-            returncode, output = run_cli(main, context.source.location, context.target.pathname)
+            returncode, output = run_cli(main, context.source.location, context.target.pathname, capture=False)
             # Check that the command line interface reported success.
             assert returncode == 0
             # Check that the input and output file have the same content.
@@ -135,7 +163,7 @@ class TestSuite(TestCase):
             # Create the target file.
             context.target.generate()
             # Synchronize the file using the command line interface.
-            returncode, output = run_cli(main, '-n', context.source.location, context.target.pathname)
+            returncode, output = run_cli(main, "-n", context.source.location, context.target.pathname, capture=False)
             # Check that the command line interface reported success.
             assert returncode == 0
             # Check that the input and output file have the same content.
@@ -145,7 +173,7 @@ class TestSuite(TestCase):
         """Test copying a file from the server to the client (no delta transfer)."""
         with Context() as context:
             # Synchronize the file using the command line interface.
-            returncode, output = run_cli(main, context.source.location, context.target.pathname)
+            returncode, output = run_cli(main, context.source.location, context.target.pathname, capture=False)
             # Check that the command line interface reported success.
             assert returncode == 0
             # Check that the input and output file have the same content.
@@ -156,7 +184,7 @@ class TestSuite(TestCase):
         with Context() as context:
             context.target.copy(context.source)
             # Synchronize the file using the command line interface.
-            returncode, output = run_cli(main, context.source.location, context.target.pathname)
+            returncode, output = run_cli(main, context.source.location, context.target.pathname, capture=False)
             # Check that the command line interface reported success.
             assert returncode == 0
             # Check that the input and output file have the same content.
@@ -165,7 +193,7 @@ class TestSuite(TestCase):
     def test_usage_message(self):
         """Test the ``pdifcopy --help`` command."""
         for option in "-h", "--help":
-            returncode, output = run_cli(main, option)
+            returncode, output = run_cli(main, option, capture=True)
             assert returncode == 0
             assert "Usage:" in output
 
@@ -195,7 +223,7 @@ class Context(PropertyManager):
     @lazy_property
     def server(self):
         """A temporary ``pdiffcopy`` server."""
-        return TemporaryServer()
+        return ProgramServer()
 
     @lazy_property
     def source(self):
@@ -225,7 +253,7 @@ class DataFile(PropertyManager):
 
     """A data file to be synchronized by the test suite."""
 
-    @required_property
+    @required_property(repr=False)
     def context(self):
         """The :class:`Context` object."""
 
@@ -254,11 +282,21 @@ class DataFile(PropertyManager):
         execute("cp", other.pathname, self.pathname)
 
 
-class TemporaryServer(EphemeralTCPServer):
+class ProgramServer(EphemeralTCPServer):
 
     """Easy to use ``pdiffcopy --listen`` wrapper."""
 
     def __init__(self):
-        """The command to run (a list of strings)."""
-        command = [sys.executable, "-m", "pdiffcopy", "--listen", str(self.port_number)]
-        super(TemporaryServer, self).__init__(*command)
+        """Initialize a :class:`ProgramServer` object."""
+        super(ProgramServer, self).__init__(sys.executable, "-m", "pdiffcopy", "--listen", str(self.port_number))
+
+
+class RsyncDaemon(EphemeralTCPServer):
+
+    """Ephemeral rsync daemon server for testing purposes."""
+
+    def __init__(self, config_file):
+        """Initialize an :class:`RsyncDaemon` object."""
+        super(RsyncDaemon, self).__init__(
+            "rsync", "--no-detach", "--daemon", "--config", config_file, "--port=%s" % self.port_number
+        )

@@ -9,6 +9,7 @@
 # Standard library modules.
 import functools
 import os
+import pipes
 import subprocess
 
 # External dependencies.
@@ -100,8 +101,10 @@ class Client(PropertyManager):
             block_size = 1024 * 256
         logger.notice("Mutating %i%% of the target file ..", percentage)
         with open(self.target.filename, "r+b") as handle:
-            block = "\0" * block_size
-            for i in range(num_bytes / block_size):
+            # Allocate the zeroed block only once.
+            block = b"\0" * block_size
+            # Write the zeroed block many times.
+            for i in range(int(num_bytes / block_size)):
                 handle.write(block)
 
     def run_benchmark(self):
@@ -141,10 +144,18 @@ class Client(PropertyManager):
             if have_rsync:
                 self.mutate_target(difference)
                 with rsync_timer:
-                    filename = os.path.relpath(self.target.filename, rsync_root)
-                    expression = format("%s::%s", rsync_server, os.path.join(rsync_module, filename))
-                    logger.info("Synchronizing changes using rsync ..")
-                    subprocess.check_call(["rsync", expression, self.target.filename])
+                    rsync_command_line = [
+                        "rsync",
+                        "--inplace",
+                        format(
+                            "rsync://%s/%s",
+                            rsync_server,
+                            os.path.join(rsync_module, os.path.relpath(self.source.filename, rsync_root)),
+                        ),
+                        self.target.filename,
+                    ]
+                    logger.info("Synchronizing changes using %s ..", " ".join(map(pipes.quote, rsync_command_line)))
+                    subprocess.check_call(rsync_command_line)
                     logger.info("Synchronized changes using rsync in %s ..", rsync_timer)
             # Summarize the results of this iteration.
             metrics = ["%i%%" % difference]
