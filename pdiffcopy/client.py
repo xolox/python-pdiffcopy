@@ -86,6 +86,7 @@ class Client(PropertyManager):
             logger.info("Disabling delta transfer because target file doesn't exist ..")
             self.delta_transfer = False
         if self.delta_transfer:
+            logger.info("Computing similarity index for delta transfer ..")
             offsets = self.find_changes()
         else:
             logger.info("Performing whole file copy (skipping delta transfer) ..")
@@ -94,11 +95,12 @@ class Client(PropertyManager):
             self.transfer_changes(offsets)
             logger.info("Synchronized changes in %s ..", timer)
         else:
-            logger.info("Nothing to do! (no changes to synchronize)")
+            logger.info("Nothing to do! (file contents match)")
 
     def find_changes(self):
         """Helper for :func:`synchronize()` to compute the similarity index."""
         timer = Timer()
+        logger.info("Computing hashes using %s ..", pluralize(self.concurrency, "worker"))
         hash_opts = dict(block_size=self.block_size, concurrency=self.concurrency, method=self.hash_method)
         source_promise = Promise(target=get_hashes_fn, args=[self.source], kwargs=hash_opts)
         target_promise = Promise(target=get_hashes_fn, args=[self.target], kwargs=hash_opts)
@@ -113,19 +115,19 @@ class Client(PropertyManager):
             else:
                 num_misses += 1
                 todo.append(offset)
-        logger.info("Took %s to compute similarity index of %i%%.", timer, num_hits / ((num_hits + num_misses) / 100.0))
+        logger.info("Computed %i%% similarity in %s.", num_hits / ((num_hits + num_misses) / 100.0), timer)
         return todo
 
     def transfer_changes(self, offsets):
         """Helper for :func:`synchronize()` to transfer the differences."""
         timer = Timer()
-        formatted_size = format_size(self.block_size * len(offsets))
+        formatted_size = format_size(self.block_size * len(offsets), binary=True)
         action = "download" if self.source.hostname else "upload"
         logger.info("Will %s %s totaling %s.", action, pluralize(len(offsets), "block"), formatted_size)
         if self.dry_run:
             return
         # Make sure the target file has the right size.
-        if not (self.target.exists and self.target.file_size == self.source.file_size):
+        if not (self.target.exists and self.source.file_size == self.target.file_size):
             self.target.resize(self.source.file_size)
         # Transfer changed blocks in parallel.
         pool = WorkerPool(
@@ -139,7 +141,14 @@ class Client(PropertyManager):
         with pool, spinner:
             for i, result in enumerate(pool, start=1):
                 spinner.step(progress=i)
-        logger.info("%sed %i blocks (%s) in %s.", action.capitalize(), len(offsets), formatted_size, timer)
+        logger.info(
+            "%sed %i blocks (%s) in %s (%s/s).",
+            action.capitalize(),
+            len(offsets),
+            formatted_size,
+            timer,
+            format_size((self.block_size * len(offsets)) / timer.elapsed_time, binary=True),
+        )
 
 
 def get_hashes_fn(location, **options):
@@ -156,10 +165,10 @@ class Location(PropertyManager):
 
     """A local or remote file to be copied."""
 
-    @property
+    @cached_property
     def exists(self):
         """:data:`True` if the file exists, :data:`False` otherwise."""
-        logger.info("Checking if %s exists ..", self.filename)
+        logger.info("Checking if %s exists ..", self.label)
         return bool(self.file_info)
 
     @mutable_property
@@ -196,6 +205,12 @@ class Location(PropertyManager):
     def hostname(self):
         """The host name of a pdiffcopy server (a string or :data:`None`)."""
 
+    @property
+    def label(self):
+        """A human friendly label for the location (a string)."""
+        vicinity = "remote" if self.hostname else "local"
+        return "%s file %s" % (vicinity, self.filename)
+
     @mutable_property
     def port_number(self):
         """The port number of a pdiffcopy server (a number or :data:`None`)."""
@@ -218,7 +233,7 @@ class Location(PropertyManager):
     @cached_property
     def file_size(self):
         """The size of the file in bytes (an integer)."""
-        logger.info("Getting file size of %s ..", self.filename)
+        logger.info("Getting size of %s ..", self.label)
         return self.file_info.get("size")
 
     def get_hashes(self, **options):
@@ -234,7 +249,7 @@ class Location(PropertyManager):
         results = {}
         options.update(filename=self.filename)
         if self.hostname:
-            logger.info("Requesting hashes from server at %s:%s ..", self.hostname, self.port_number)
+            logger.info("Requesting hashes from server ..")
             request_url = self.get_url("hashes", **options)
             logger.debug("Requesting %s ..", request_url)
             response = requests.get(request_url, stream=True)

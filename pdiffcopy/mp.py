@@ -149,15 +149,17 @@ class WorkerPool(PropertyManager):
         # then everything will block as soon as $concurrency values have been
         # pushed onto the output queue).
         logger.debug("Starting up worker pool with concurrency %s ..", self.concurrency)
-        while any(p.is_alive() for p in self.all_processes):
-            # Get the next value from the output queue.
+        while True:
             try:
                 logger.debug("Waiting for value on output queue ..")
                 yield self.output_queue.get(timeout=self.polling_interval)
             except queue.Empty:
-                logger.debug("Got empty output queue, backing off ..")
-                time.sleep(self.polling_interval)
-        logger.debug("All worker processes have returned.")
+                if any(p.is_alive() for p in self.all_processes):
+                    logger.debug("Got empty output queue, backing off ..")
+                    time.sleep(self.polling_interval)
+                else:
+                    logger.debug("All workers have finished.")
+                    break
         # Check if any values remain in the output queue at this point.
         while not self.output_queue.empty():
             logger.debug("Flushing output queue ..")
