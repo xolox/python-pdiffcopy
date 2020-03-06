@@ -1,6 +1,12 @@
 pdiffcopy: Fast large file synchronization inspired by rsync
 ============================================================
 
+.. image:: https://travis-ci.org/xolox/python-pdiffcopy.svg?branch=master
+   :target: https://travis-ci.org/xolox/python-pdiffcopy
+
+.. image:: https://coveralls.io/repos/xolox/python-pdiffcopy/badge.svg?branch=master
+   :target: https://coveralls.io/r/xolox/python-pdiffcopy?branch=master
+
 Welcome to the documentation of `pdiffcopy` version |release|!
 The following sections are available:
 
