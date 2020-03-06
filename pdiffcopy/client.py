@@ -90,6 +90,27 @@ class Client(PropertyManager):
         """Automatically coerce :attr:`target` to a :class:`Location`."""
         set_property(self, "target", Location(expression=value))
 
+    def compute_transfer_size(self, offsets):
+        """
+        Figure out how much data we're going to transfer.
+
+        :param offsets: a list of integers with the offsets of the blocks to be synchronized.
+        :returns: The amount of data to be transferred in bytes (an integer).
+
+        This would be trivially easy if it wasn't for the last block which can
+        be smaller than the block size. Depending on the configured block size
+        and the size of the file being synchronized the difference may be
+        negligible or quite significant, so we go to the effort of calculating
+        this correctly.
+        """
+        transfer_size = self.block_size * len(offsets)
+        last_block_size = (self.source.file_size % self.block_size) or self.block_size
+        last_block_offset = self.source.file_size - last_block_size
+        if last_block_offset in offsets:
+            transfer_size -= self.block_size
+            transfer_size += last_block_size
+        return transfer_size
+
     def mutate_target(self, percentage):
         """Invalidate a percentage of the data in the :attr:`target` file."""
         if self.target.hostname:
@@ -229,7 +250,8 @@ class Client(PropertyManager):
                         to copy from :attr:`source` to :attr:`target`.
         """
         timer = Timer()
-        formatted_size = format_size(self.block_size * len(offsets), binary=True)
+        transfer_size = self.compute_transfer_size(offsets)
+        formatted_size = format_size(transfer_size, binary=True)
         action = "download" if self.source.hostname else "upload"
         logger.info("Will %s %s totaling %s.", action, pluralize(len(offsets), "block"), formatted_size)
         if self.dry_run:
@@ -255,7 +277,7 @@ class Client(PropertyManager):
             len(offsets),
             formatted_size,
             timer,
-            format_size((self.block_size * len(offsets)) / timer.elapsed_time, binary=True),
+            format_size(transfer_size / timer.elapsed_time, binary=True),
         )
 
 
