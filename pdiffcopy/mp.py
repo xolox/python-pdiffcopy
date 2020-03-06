@@ -4,14 +4,7 @@
 # Last Change: March 6, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
-"""
-Integration with :mod:`multiprocessing`.
-
-Usages to integrate:
-
-- Hash pool workers (input & output).
-- Transfer block workers (input only).
-"""
+"""Adaptations of :mod:`multiprocessing` that make it easy to do the right thing."""
 
 # Standard library modules.
 import logging
@@ -44,13 +37,14 @@ class Promise(multiprocessing.Process):
         The child process is started automatically.
         """
         super(Promise, self).__init__(**options)
+        self.log_level = coloredlogs.get_level()
         self.queue = multiprocessing.Queue()
         self.start()
 
     def run(self):
         """Run the target function in a newly spawned child process."""
         try:
-            initialize_child()
+            initialize_child(self.log_level)
             logger.debug("Child process calling function ..")
             result = self._target(*self._args, **self._kwargs)
             logger.debug("Child process communicating return value ..")
@@ -96,13 +90,28 @@ class WorkerPool(PropertyManager):
         """A :class:`multiprocessing.Process` object to run :attr:`generator_fn`."""
         return multiprocessing.Process(
             target=generator_adapter,
-            kwargs=dict(concurrency=self.concurrency, generator_fn=self.generator_fn, input_queue=self.input_queue),
+            kwargs=dict(
+                concurrency=self.concurrency,
+                generator_fn=self.generator_fn,
+                input_queue=self.input_queue,
+                log_level=self.log_level,
+            ),
         )
 
     @lazy_property
     def input_queue(self):
         """The input queue (a :class:`multiprocessing.Queue` object)."""
         return multiprocessing.Queue(self.concurrency)
+
+    @required_property
+    def log_level(self):
+        """
+        The logging level to configure in child processes (an integer).
+
+        Defaults to the current log level in the parent process at the point
+        when the worker processes are created.
+        """
+        return coloredlogs.get_level()
 
     @lazy_property
     def output_queue(self):
@@ -124,7 +133,12 @@ class WorkerPool(PropertyManager):
         return [
             multiprocessing.Process(
                 target=worker_adapter,
-                kwargs=dict(input_queue=self.input_queue, output_queue=self.output_queue, worker_fn=self.worker_fn),
+                kwargs=dict(
+                    input_queue=self.input_queue,
+                    log_level=self.log_level,
+                    output_queue=self.output_queue,
+                    worker_fn=self.worker_fn,
+                ),
             )
             for i in range(self.concurrency)
         ]
@@ -170,9 +184,9 @@ class WorkerPool(PropertyManager):
                 worker.join()
 
 
-def generator_adapter(generator_fn, input_queue, concurrency):
+def generator_adapter(concurrency, generator_fn, input_queue, log_level):
     """Adapter function for the generator process."""
-    initialize_child()
+    initialize_child(log_level)
     # Populate the input queue from the generator function.
     for value in generator_fn():
         logger.debug("Generator putting value onto input queue (%s) ..", value)
@@ -186,14 +200,14 @@ def generator_adapter(generator_fn, input_queue, concurrency):
     logger.debug("Generator function is finished.")
 
 
-def initialize_child():
+def initialize_child(log_level=logging.INFO):
     """Initialize a child process created using :mod:`multiprocessing`."""
-    coloredlogs.install(level=logging.DEBUG)
+    coloredlogs.install(level=log_level)
 
 
-def worker_adapter(worker_fn, input_queue, output_queue):
+def worker_adapter(input_queue, log_level, output_queue, worker_fn):
     """Adapter function for the worker processes."""
-    initialize_child()
+    initialize_child(log_level)
     while True:
         # Get the next value to process from the input queue.
         logger.debug("Worker waiting for value on input queue ..")
