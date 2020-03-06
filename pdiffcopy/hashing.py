@@ -4,7 +4,7 @@
 # Last Change: March 6, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
-"""Parallel hashing of files using :mod:`multiprocessing`."""
+"""Parallel hashing of files using :mod:`multiprocessing` and :mod:`pdiffcopy.mp`."""
 
 # Standard library modules.
 import functools

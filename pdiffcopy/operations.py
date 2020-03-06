@@ -9,11 +9,22 @@ import os
 from humanfriendly import format_size
 from humanfriendly.testing import make_dirs
 
+# Public identifiers that require documentation.
+__all__ = ("get_file_info", "get_file_size", "logger", "read_block", "resize_file", "write_block")
+
 # Initialize a logger for this module.
 logger = logging.getLogger(__name__)
 
 
 def get_file_info(filename):
+    """
+    Get information about a local file.
+
+    :param filename: An absolute filename (a string).
+    :returns: A dictionary with file metadata, currently only the file size
+              is included. If the file doesn't exist an empty dictionary is
+              returned.
+    """
     size = get_file_size(filename)
     if size is not None:
         return {"size": size}
@@ -22,6 +33,13 @@ def get_file_info(filename):
 
 
 def get_file_size(filename):
+    """
+    Get the size of a local file.
+
+    :param filename: An absolute filename (a string).
+    :returns: The size of the file (an integer) or :data:`None` when the file
+              doesn't exist.
+    """
     try:
         return os.path.getsize(filename)
     except OSError as e:

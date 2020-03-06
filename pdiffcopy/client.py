@@ -29,7 +29,7 @@ from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY, DEFAULT_PORT
 from pdiffcopy.exceptions import BenchmarkAbortedError
 from pdiffcopy.hashing import compute_hashes
 from pdiffcopy.mp import Promise, WorkerPool
-from pdiffcopy.utils import get_file_info, read_block, resize_file, write_block
+from pdiffcopy.operations import get_file_info, read_block, resize_file, write_block
 
 # Public identifiers that require documentation.
 __all__ = ("Client", "get_hashes_fn", "Location", "logger", "transfer_block_fn")

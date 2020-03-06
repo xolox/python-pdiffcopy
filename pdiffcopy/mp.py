@@ -4,7 +4,16 @@
 # Last Change: March 6, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
-"""Adaptations of :mod:`multiprocessing` that make it easy to do the right thing."""
+"""
+Adaptations of :mod:`multiprocessing` that make it easier to do the right thing.
+
+This module stands alone as a library used by the other modules that are
+specialized to what pdiffcopy does (synchronizing files). I may end up
+extracting this to a separate package at some point, because over the 10+ years
+that I've been programming Python I've written an awful lot of plumbing code
+for :mod:`multiprocessing` and it's not exactly my favorite thing in the world
+(I suck at reasoning about concurrency, like most people I guess).
+"""
 
 # Standard library modules.
 import logging
@@ -13,7 +22,7 @@ import time
 
 # External dependencies.
 import coloredlogs
-from property_manager import PropertyManager, lazy_property, required_property
+from property_manager import PropertyManager, lazy_property, mutable_property, required_property
 from six.moves import queue
 
 # Public identifiers that require documentation.
@@ -32,9 +41,8 @@ class Promise(multiprocessing.Process):
         Initialize a :class:`Promise` object.
 
         The initializer arguments are the same as for
-        :func:`multiprocessing.Process.__init__()`.
-
-        The child process is started automatically.
+        :class:`multiprocessing.Process`. The child
+        process is started automatically.
         """
         super(Promise, self).__init__(**options)
         self.log_level = coloredlogs.get_level()
@@ -103,7 +111,7 @@ class WorkerPool(PropertyManager):
         """The input queue (a :class:`multiprocessing.Queue` object)."""
         return multiprocessing.Queue(self.concurrency)
 
-    @required_property
+    @mutable_property
     def log_level(self):
         """
         The logging level to configure in child processes (an integer).
@@ -118,7 +126,7 @@ class WorkerPool(PropertyManager):
         """The output queue (a :class:`multiprocessing.Queue` object)."""
         return multiprocessing.Queue(self.concurrency)
 
-    @required_property
+    @mutable_property
     def polling_interval(self):
         """The time to wait between checking :attr:`output_queue` (a floating point number, defaults to 0.1 second)."""
         return 0.1
