@@ -3,3 +3,7 @@
 executor >= 22.0
 pytest >= 3.0.7
 pytest-cov >= 2.2.1
+
+# Make sure Tox installs the extras.
+--requirement=requirements-client.txt
+--requirement=requirements-server.txt

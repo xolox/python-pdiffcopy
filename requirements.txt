@@ -1,6 +1,6 @@
 # Installation requirements for the client and server.
 
 coloredlogs >= 10.0
-humanfriendly >= 8.0
+humanfriendly >= 8.1
 property-manager >= 3.0
 six >= 1.12.0
