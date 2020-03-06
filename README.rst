@@ -39,13 +39,17 @@ as simple as:
 
 .. code-block:: console
 
-   $ pip install pdiffcopy
+   $ pip install 'pdiffcopy[client,server]'
 
-There's actually a multitude of ways to install Python_ packages (e.g. the `per
-user site-packages directory`_, `virtual environments`_ or just installing
+There's actually a multitude of ways to install Python_ packages (e.g. the
+`per user site-packages directory`_, `virtual environments`_ or just installing
 system wide) and I have no intention of getting into that discussion here, so
 if this intimidates you then read up on your options before returning to these
 instructions 😉.
+
+The names between the square brackets (``client`` and ``server``) are called
+"extras" and they enable you to choose whether to install the client
+dependencies, server dependencies or both.
 
 Command line
 ------------
