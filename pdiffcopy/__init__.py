@@ -1,7 +1,7 @@
 # Fast large file synchronization inspired by rsync.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: March 6, 2020
+# Last Change: March 7, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
 """Configuration defaults for the ``pdiffcopy`` program."""
@@ -10,7 +10,7 @@
 import multiprocessing
 
 # Semi-standard module versioning.
-__version__ = '1.0'
+__version__ = '1.0.1'
 
 BLOCK_SIZE = 1024 * 1024
 """The default block size to be used by ``pdiffcopy`` (1 MiB)."""
