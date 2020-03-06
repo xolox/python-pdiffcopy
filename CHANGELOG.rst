@@ -11,6 +11,14 @@ Changelog`_ . This project adheres to `semantic versioning`_.
 .. _Keep a Changelog: http://keepachangelog.com/
 .. _semantic versioning: http://semver.org/
 
+`Release 1.0.1`_ (2020-03-07)
+-----------------------------
+
+- Update installation instructions to explain the use of "extras".
+- Remove Python 3.4 from trove classifiers in ``setup.py`` (accidentally added).
+
+.. _Release 1.0.1: https://github.com/xolox/python-pdiffcopy/compare/1.0...1.0.1
+
 `Release 1.0`_ (2020-03-06)
 ---------------------------
 
