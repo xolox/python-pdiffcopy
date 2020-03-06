@@ -1,7 +1,7 @@
 # Fast synchronization of large files inspired by rsync.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: March 5, 2020
+# Last Change: March 6, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
 """Parallel, differential file copy server."""
@@ -13,6 +13,7 @@ import logging
 from flask import Flask, Response, jsonify, request
 from gunicorn.app.base import BaseApplication
 from six import iteritems
+from six.moves.urllib.parse import urlparse
 
 # Modules included in our package.
 from pdiffcopy import BLOCK_SIZE, DEFAULT_CONCURRENCY, DEFAULT_PORT
@@ -38,9 +39,29 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 
-def start_server(address=("", DEFAULT_PORT), concurrency=4):
-    """Start a multi threaded Python HTTP server using :pypi:`gunicorn`."""
-    StandaloneApplication(app, {"bind": "%s:%s" % address, "timeout": 0, "workers": concurrency}).run()
+def start_server(address=None, concurrency=4):
+    """Start a multi threaded ``pdiffcopy`` HTTP server using :pypi:`gunicorn` and :pypi:`flask`."""
+    if address:
+        if address.isdigit():
+            # Only a port number was given.
+            listen_host = ""
+            listen_port = int(address)
+        else:
+            # An IP address was given (with an optional port number). We
+            # (ab)use the URL parsing module in the standard library to
+            # enable proper support for IPv6 which enables monstrosities
+            # like http://[2001:db8:1f70::999:de8:7648:6e8]:100/ ...
+            parsed = urlparse("http://" + address)
+            listen_host = parsed.hostname or ""
+            listen_port = parsed.port or DEFAULT_PORT
+    else:
+        # No listen address specified, default to listening
+        # on all available IP addresses and the default port.
+        listen_host = ""
+        listen_port = DEFAULT_PORT
+    StandaloneApplication(
+        app, {"bind": "%s:%s" % (listen_host, listen_port), "timeout": 0, "workers": concurrency}
+    ).run()
 
 
 @app.route("/blocks", methods=["GET", "POST"])

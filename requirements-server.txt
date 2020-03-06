@@ -1,0 +1,4 @@
+# Installation requirements for the server.
+
+flask >= 1.0.3
+gunicorn >= 19.9.0

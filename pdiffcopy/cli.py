@@ -1,7 +1,7 @@
 # Command line interface for pdiffcopy.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: March 5, 2020
+# Last Change: March 6, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
 """
@@ -71,10 +71,6 @@ import coloredlogs
 from humanfriendly import parse_size
 from humanfriendly.terminal import warning, usage
 
-# Modules included in our package.
-from pdiffcopy.client import Client
-from pdiffcopy.server import DEFAULT_PORT, start_server
-
 # Initialize a logger for this module.
 logger = logging.getLogger(__name__)
 
@@ -118,13 +114,7 @@ def main():
             client_opts["concurrency"] = int(value)
             server_opts["concurrency"] = int(value)
         elif option in ("-l", "--listen"):
-            if value.count(":") == 1:
-                hostname, _, port = value.partition(":")
-                server_opts['address'] = (hostname, int(port))
-            elif value.isdigit():
-                server_opts['address'] = ("", int(value))
-            else:
-                server_opts['address'] = (value, DEFAULT_PORT)
+            server_opts["address"] = value
         elif option in ("-n", "--dry-run"):
             client_opts["dry_run"] = True
         elif option in ("-v", "--verbose"):
@@ -140,15 +130,40 @@ def main():
             if len(arguments) != 2:
                 warning("Error: Two positional arguments expected!")
                 sys.exit(1)
-            # Run the client.
-            Client(
-                source=arguments[0],
-                target=arguments[1],
-                **client_opts
-            ).synchronize()
+            client_opts['source'] = arguments[0]
+            client_opts['target'] = arguments[1]
+            run_client(**client_opts)
         else:
-            # Start the server.
-            start_server(**server_opts)
+            run_server(**server_opts)
     except Exception:
         logger.exception("Program terminating due to exception!")
         sys.exit(1)
+
+
+def run_client(**options):
+    """Run the client program."""
+    try:
+        from pdiffcopy.client import Client
+        Client(**options).synchronize()
+    except ImportError:
+        raise DependencyError(
+            "Installation requirements seem to be missing! You can "
+            "install them using 'pip install pdiffcopy[client]'."
+        )
+
+
+def run_server(**options):
+    """Run the server program."""
+    try:
+        from pdiffcopy.server import start_server
+        return start_server(**options)
+    except ImportError:
+        raise DependencyError(
+            "Installation requirements seem to be missing! You can "
+            "install them using 'pip install pdiffcopy[server]'."
+        )
+
+
+class DependencyError(Exception):
+
+    """Raised when client/server dependencies are missing."""

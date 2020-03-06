@@ -8,8 +8,8 @@ pdiffcopy: Fast synchronization of large files inspired by rsync
    :target: https://coveralls.io/r/xolox/python-pdiffcopy?branch=master
 
 The ``pdiffcopy`` program can synchronize large files between Linux servers at
-blazing speeds by transferring only changed blocks using massive concurrency.
-It's currently tested on Python 2.7, 3.5, 3.6, 3.7, 3.8 and PyPy (2.7) on
+blazing speeds by performing delta transfer and running on many CPU cores at
+the same time. It's currently tested on Python 2.7, 3.5+ and PyPy (2.7) on
 Ubuntu Linux but is expected to work on most Linux systems.
 
 .. contents::

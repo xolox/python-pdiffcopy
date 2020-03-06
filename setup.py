@@ -3,7 +3,7 @@
 # Setup script for the `pdiffcopy' package.
 #
 # Author: Peter Odding <peter@peterodding.com>
-# Last Change: June 29, 2019
+# Last Change: March 6, 2020
 # URL: https://pdiffcopy.readthedocs.io
 
 """
@@ -73,6 +73,11 @@ setup(
         'pdiffcopy = pdiffcopy.cli:main',
     ]),
     install_requires=get_requirements('requirements.txt'),
+    extras_require=dict(
+        client=get_requirements('requirements-client.txt'),
+        server=get_requirements('requirements-server.txt'),
+    ),
+    python_requires=">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*",
     classifiers=[
         'Environment :: Console',
         'Intended Audience :: Developers',
